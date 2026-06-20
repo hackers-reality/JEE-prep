@@ -1,0 +1,243 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum SubjectName {
+  PHYSICS
+  CHEMISTRY
+  MATHEMATICS
+}
+
+enum ClassLevel {
+  CLASS_11
+  CLASS_12
+  JEE_ADVANCED_ONLY
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+  JEE_ADVANCED
+}
+
+model Subject {
+  id        String   @id @default(cuid())
+  name      SubjectName @unique
+  books     Book[]
+  createdAt DateTime @default(now())
+}
+
+model Book {
+  id            String    @id @default(cuid())
+  title         String
+  subject       Subject   @relation(fields: [subjectId], references: [id])
+  subjectId     String
+  classLevel    ClassLevel
+  isPrimary     Boolean   @default(true)
+  referenceNote String?
+  chapters      Chapter[]
+  createdAt     DateTime  @default(now())
+
+  @@index([subjectId, classLevel])
+}
+
+model Chapter {
+  id         String   @id @default(cuid())
+  title      String
+  book       Book     @relation(fields: [bookId], references: [id])
+  bookId     String
+  orderIndex Int
+  topics     Topic[]
+  createdAt  DateTime @default(now())
+
+  @@index([bookId])
+}
+
+model Topic {
+  id              String   @id @default(cuid())
+  title           String
+  chapter         Chapter  @relation(fields: [chapterId], references: [id])
+  chapterId       String
+  orderIndex      Int
+  theory          String
+  sourceReference String?
+  needsReview     Boolean  @default(true)
+  reviewedAt      DateTime?
+  reviewedBy      String?
+  formulas        Formula[]
+  examples        SolvedExample[]
+  mistakes        CommonMistake[]
+  diagrams        Diagram[]
+  mockQuestions   MockQuestionTopic[]
+  topicMastery    TopicMastery[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([chapterId])
+  @@index([needsReview])
+}
+
+model Formula {
+  id         String  @id @default(cuid())
+  topic      Topic   @relation(fields: [topicId], references: [id])
+  topicId    String
+  name       String
+  expression String
+  derivation String?
+  orderIndex Int     @default(0)
+
+  @@index([topicId])
+}
+
+model SolvedExample {
+  id         String     @id @default(cuid())
+  topic      Topic      @relation(fields: [topicId], references: [id])
+  topicId    String
+  question   String
+  solution   String
+  difficulty Difficulty
+  orderIndex Int        @default(0)
+
+  @@index([topicId])
+}
+
+model CommonMistake {
+  id          String @id @default(cuid())
+  topic       Topic  @relation(fields: [topicId], references: [id])
+  topicId     String
+  description String
+
+  @@index([topicId])
+}
+
+model Diagram {
+  id        String  @id @default(cuid())
+  topic     Topic   @relation(fields: [topicId], references: [id])
+  topicId   String
+  assetPath String
+  caption   String?
+
+  @@index([topicId])
+}
+
+enum PrepStage {
+  JUST_STARTED_11
+  MID_11
+  COMPLETED_11_STARTING_12
+  IN_12
+  DROP_YEAR_REPEAT
+}
+
+enum SelfRatedLevel {
+  BEGINNER
+  SOME_FOUNDATION
+  CONFIDENT
+}
+
+enum JeeTarget {
+  MAIN_ONLY
+  MAIN_AND_ADVANCED
+}
+
+model Student {
+  id                      String        @id @default(cuid())
+  name                    String?
+  onboardingComplete      Boolean       @default(false)
+  prepStage               PrepStage?
+  jeeTarget               JeeTarget?
+  preferredDailyHours     Int?
+  selfRatings             SelfRating[]
+  nvidiaNimKeyServerSynced String?
+  mockTests               MockTest[]
+  topicMastery            TopicMastery[]
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
+}
+
+model SelfRating {
+  id        String        @id @default(cuid())
+  student   Student       @relation(fields: [studentId], references: [id])
+  studentId String
+  subject   SubjectName
+  level     SelfRatedLevel
+
+  @@unique([studentId, subject])
+}
+
+enum MockTestType {
+  DIAGNOSTIC
+  REGULAR
+}
+
+model MockTest {
+  id        String        @id @default(cuid())
+  student   Student       @relation(fields: [studentId], references: [id])
+  studentId String
+  type      MockTestType
+  takenAt   DateTime?
+  createdAt DateTime      @default(now())
+  questions MockQuestion[]
+  result    MockTestResult?
+
+  @@index([studentId])
+}
+
+model MockQuestion {
+  id            String             @id @default(cuid())
+  mockTest      MockTest           @relation(fields: [mockTestId], references: [id])
+  mockTestId    String
+  question      String
+  options       String
+  correctAnswer String
+  explanation   String
+  difficulty    Difficulty
+  needsReview   Boolean            @default(true)
+  studentAnswer String?
+  isCorrect     Boolean?
+  topics        MockQuestionTopic[]
+
+  @@index([mockTestId])
+}
+
+model MockQuestionTopic {
+  mockQuestion   MockQuestion @relation(fields: [mockQuestionId], references: [id])
+  mockQuestionId String
+  topic          Topic        @relation(fields: [topicId], references: [id])
+  topicId        String
+
+  @@id([mockQuestionId, topicId])
+}
+
+model MockTestResult {
+  id               String   @id @default(cuid())
+  mockTest         MockTest @relation(fields: [mockTestId], references: [id])
+  mockTestId       String   @unique
+  totalQuestions   Int
+  correctCount     Int
+  incorrectCount   Int
+  subjectBreakdown String
+  weakTopicIds     String
+  strongTopicIds   String
+  focusNextTopicIds String
+  computedAt       DateTime @default(now())
+}
+
+model TopicMastery {
+  id               String   @id @default(cuid())
+  student          Student  @relation(fields: [studentId], references: [id])
+  studentId        String
+  topic            Topic    @relation(fields: [topicId], references: [id])
+  topicId          String
+  questionsSeen    Int      @default(0)
+  questionsCorrect Int      @default(0)
+  lastUpdated      DateTime @updatedAt
+
+  @@unique([studentId, topicId])
+  @@index([studentId])
+}

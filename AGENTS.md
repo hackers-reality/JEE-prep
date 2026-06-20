@@ -1,5 +1,19 @@
-<!-- BEGIN:nextjs-agent-rules -->
-# This is NOT the Next.js you know
+# JEE Prep — Build Agent Notes
 
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
-<!-- END:nextjs-agent-rules -->
+## Phase 1 (Complete)
+- Next.js 16 (App Router) scaffolded
+- Prisma 7 + SQLite with provided schema
+- Prisma client generated to `src/generated/prisma/`
+- Initial migration applied — `prisma/migrations/`
+- Prisma client singleton at `src/lib/prisma.ts`
+
+## Prerequisites for Later Phases
+
+### Tauri (Phase 7 — Desktop .exe)
+- Requires Rust toolchain: install from https://rustup.rs
+- After install, verify with `rustc --version && cargo --version`
+- Then: `cargo install tauri-cli`
+
+### Capacitor (Phase 7 — Android .apk)
+- Requires Android SDK (Android Studio)
+- Then: `npm install @capacitor/core @capacitor/cli @capacitor/android`

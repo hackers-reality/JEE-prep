@@ -1,26 +1,35 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --paper-bg: #FAF7F0;
+  --grid-line: #D8D2C2;
+  --sticky-yellow: #FFE89A;
+  --sticky-blue: #AEE2FF;
+  --sticky-pink: #FFC2D1;
+  --sticky-green: #C8F0C2;
+  --ink: #2B2B2B;
+  --accent-red: #E1543B;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-paper: var(--paper-bg);
+  --color-grid-line: var(--grid-line);
+  --color-sticky-yellow: var(--sticky-yellow);
+  --color-sticky-blue: var(--sticky-blue);
+  --color-sticky-pink: var(--sticky-pink);
+  --color-sticky-green: var(--sticky-green);
+  --color-ink: var(--ink);
+  --color-accent-red: var(--accent-red);
+  --font-hand: "Kalam", "Patrick Hand", "Caveat", cursive;
+  --font-body: "Inter", "Work Sans", sans-serif;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--paper-bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  background-image:
+    repeating-linear-gradient(0deg, transparent, transparent 24px, var(--grid-line) 24px, var(--grid-line) 25px),
+    repeating-linear-gradient(90deg, transparent, transparent 24px, var(--grid-line) 24px, var(--grid-line) 25px);
+  background-size: 25px 25px;
 }
