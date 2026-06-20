@@ -285,7 +285,7 @@ export async function computeTestResult(mockTestId: string) {
   const strong: Tiered[] = [];
   const neutral: Tiered[] = [];
 
-  const masteryWrites: Promise<unknown>[] = [];
+  const masteryWrites: ReturnType<typeof prisma.topicMastery.upsert>[] = [];
 
   for (const [topicId, seen] of topicSeenCount) {
     const mastery = test.student.topicMastery.find((m) => m.topicId === topicId);
