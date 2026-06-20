@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import MarkdownContent from "./MarkdownContent";
 import {
   getApiKey,
   getSelectedModel,
@@ -113,14 +114,14 @@ export function ChatWidget({ topicId, topicTitle, topicContext }: { topicId: str
         {messages.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
             <div
-              className="max-w-[80%] rounded-lg px-4 py-2 text-sm whitespace-pre-wrap"
+              className="max-w-[80%] rounded-lg px-4 py-2 text-sm"
               style={{
                 backgroundColor: msg.role === "user" ? "var(--sticky-blue)" : "var(--sticky-green)",
                 borderRadius: "6px 10px 8px 12px",
                 color: "var(--ink)",
               }}
             >
-              {msg.content}
+              {msg.role === "user" ? msg.content : <MarkdownContent content={msg.content} />}
             </div>
           </div>
         ))}

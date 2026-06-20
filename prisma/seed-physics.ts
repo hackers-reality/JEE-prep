@@ -1,13 +1,15 @@
 import "dotenv/config";
 import { PrismaSqlite } from "prisma-adapter-sqlite";
 import { PrismaClient } from "../src/generated/prisma/client";
+import type { Difficulty, PrismaClient as PrismaClientType } from "../src/generated/prisma/client";
 
-const adapter = new PrismaSqlite({
+const _adapter = new PrismaSqlite({
   url: process.env["DATABASE_URL"] ?? "file:./prisma/dev.db",
 });
-const prisma = new PrismaClient({ adapter });
+let prisma: PrismaClientType = new PrismaClient({ adapter: _adapter });
 
-async function seedPhysics() {
+export async function seedPhysics(p?: PrismaClientType) {
+  if (p) prisma = p;
   const subject = await prisma.subject.upsert({
     where: { name: "PHYSICS" },
     update: {},
@@ -626,7 +628,7 @@ Logic gates: AND, OR, NOT, NAND, NOR, XOR`,
             topicId: t.id,
             question: e.question,
             solution: e.solution,
-            difficulty: e.difficulty as any,
+            difficulty: e.difficulty as Difficulty,
             orderIndex: t.examples.indexOf(e),
           },
         });
@@ -649,6 +651,8 @@ Logic gates: AND, OR, NOT, NAND, NOR, XOR`,
   console.log(`Physics seed complete — ${allChapters.length} chapters across Class 11, Class 12`);
 }
 
-seedPhysics()
-  .catch((e) => { console.error(e); process.exit(1); })
-  .finally(() => prisma.$disconnect());
+if (process.argv[1]?.endsWith("seed-physics.ts")) {
+  seedPhysics()
+    .catch((e) => { console.error(e); process.exit(1); })
+    .finally(() => prisma.$disconnect());
+}

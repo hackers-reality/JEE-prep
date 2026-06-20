@@ -77,7 +77,7 @@ export default function TestResultsPage() {
         className="rounded-lg p-8 shadow-md text-center mb-6"
         style={{ backgroundColor: "var(--sticky-yellow)" }}
       >
-        <h1 className="font-hand text-3xl font-bold mb-2">Diagnostic Results</h1>
+        <h1 className="font-hand text-3xl font-bold mb-2">{result.mockTest.type === "REGULAR" ? "Practice Test" : "Diagnostic"} Results</h1>
         <div className="text-5xl font-bold my-4" style={{ color: pct >= 60 ? "var(--sticky-green)" : "var(--accent-red)" }}>
           {pct}%
         </div>
@@ -145,11 +145,11 @@ export default function TestResultsPage() {
 
       <div className="mt-8 text-center space-x-4">
         <button
-          onClick={() => router.push("/mock-test/diagnostic")}
+          onClick={() => router.push(result.mockTest.type === "REGULAR" ? "/mock-test/regular" : "/mock-test/diagnostic")}
           className="px-6 py-3 text-sm font-bold rounded-lg"
           style={{ backgroundColor: "var(--sticky-blue)", color: "var(--ink)" }}
         >
-          Back to Diagnostic Hub
+          {result.mockTest.type === "REGULAR" ? "Back to Practice Tests" : "Back to Diagnostic Hub"}
         </button>
         <button
           onClick={() => router.push("/subjects")}

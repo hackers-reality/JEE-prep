@@ -1,13 +1,15 @@
 import "dotenv/config";
 import { PrismaSqlite } from "prisma-adapter-sqlite";
 import { PrismaClient } from "../src/generated/prisma/client";
+import type { PrismaClient as PrismaClientType } from "../src/generated/prisma/client";
 
-const adapter = new PrismaSqlite({
+const _adapter = new PrismaSqlite({
   url: process.env["DATABASE_URL"] ?? "file:./prisma/dev.db",
 });
-const prisma = new PrismaClient({ adapter });
+let prisma: PrismaClientType = new PrismaClient({ adapter: _adapter });
 
-async function seedChemistry() {
+export async function seedChemistry(p?: PrismaClientType) {
+  if (p) prisma = p;
   const subject = await prisma.subject.upsert({
     where: { name: "CHEMISTRY" },
     update: {},
@@ -392,6 +394,8 @@ Carboxylic acids: R-COOH
   console.log(`Chemistry seed complete — ${chapters.length} chapters`);
 }
 
-seedChemistry()
-  .catch((e) => { console.error(e); process.exit(1); })
-  .finally(() => prisma.$disconnect());
+if (process.argv[1]?.endsWith("seed-chemistry.ts")) {
+  seedChemistry()
+    .catch((e) => { console.error(e); process.exit(1); })
+    .finally(() => prisma.$disconnect());
+}

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { deterministicRotation } from "@/lib/rotation";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +45,7 @@ export default async function ChaptersPage({
               className="p-5 transition-all duration-200 hover:-translate-y-0.5"
               style={{
                 backgroundColor: "var(--sticky-yellow)",
-                transform: `rotate(${(Math.random() - 0.5) * 2}deg)`,
+                transform: `rotate(${deterministicRotation(chapter.id, 2)}deg)`,
                 borderRadius: "4px",
                 boxShadow: "5px 5px 0 rgba(0,0,0,0.25)",
                 border: "1px solid rgba(0,0,0,0.08)",

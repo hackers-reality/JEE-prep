@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// This route proxies AI chat requests to NVIDIA NIM.
+// The apiKey is received in-memory per-request, forwarded to NVIDIA,
+// and discarded immediately. It is NOT logged, persisted to DB, or
+// written to disk at any point.
+
 const NVIDIA_API_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
 
 export async function POST(req: NextRequest) {

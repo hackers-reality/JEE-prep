@@ -55,8 +55,10 @@ export default function SettingsPage() {
             NVIDIA NIM API Key
           </label>
           <p className="text-xs mb-2 opacity-70">
-            Your key is stored in your browser only (localStorage). It is never
-            sent to or stored on any server.
+            Your key is stored in your browser (localStorage). When you send a
+            chat message, the key is sent to your own server in-memory only,
+            forwarded to NVIDIA NIM, and discarded — never written to disk,
+            database, or logs.
           </p>
           <input
             type="password"

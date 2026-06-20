@@ -1,4 +1,8 @@
 import { prisma } from "./prisma";
+import { main as seedBase } from "../../prisma/seed";
+import { seedPhysics } from "../../prisma/seed-physics";
+import { seedChemistry } from "../../prisma/seed-chemistry";
+import { seedMath } from "../../prisma/seed-mathematics";
 
 let seeding = false;
 let seedComplete = false;
@@ -23,25 +27,10 @@ export async function checkAndSeed(): Promise<boolean> {
 
   seeding = true;
   try {
-    const { exec } = await import("child_process");
-    const { promisify } = await import("util");
-    const execAsync = promisify(exec);
-
-    const files = [
-      "prisma/seed.ts",
-      "prisma/seed-physics.ts",
-      "prisma/seed-chemistry.ts",
-      "prisma/seed-mathematics.ts",
-    ];
-
-    for (const file of files) {
-      await execAsync(`npx tsx "${file}"`, {
-        cwd: process.cwd(),
-        timeout: 180_000,
-        env: { ...process.env, NODE_ENV: "production" },
-      });
-    }
-
+    await seedBase(prisma);
+    await seedPhysics(prisma);
+    await seedChemistry(prisma);
+    await seedMath(prisma);
     seedComplete = true;
     seeding = false;
     return true;

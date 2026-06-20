@@ -99,11 +99,11 @@ export default function MockTestPage() {
             </button>
             <br />
             <button
-              onClick={() => router.push("/mock-test/diagnostic")}
+              onClick={() => router.push(test.type === "REGULAR" ? "/mock-test/regular" : "/mock-test/diagnostic")}
               className="px-6 py-3 text-sm font-bold rounded-lg mt-2"
               style={{ backgroundColor: "var(--sticky-blue)", color: "var(--ink)" }}
             >
-              Back to Diagnostic Hub
+              {test.type === "REGULAR" ? "Back to Practice Tests" : "Back to Diagnostic Hub"}
             </button>
           </div>
         ) : (
@@ -120,7 +120,7 @@ export default function MockTestPage() {
     <main className="max-w-3xl mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="font-hand text-2xl font-bold" style={{ color: "var(--ink)" }}>
-          Diagnostic Test
+          {test.type === "REGULAR" ? "Practice Test" : "Diagnostic Test"}
         </h1>
         <div className="text-sm" style={{ color: "var(--ink)" }}>
           {answeredCount} / {test.questions.length} answered

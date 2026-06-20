@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { NeedsReviewBadge } from "@/components/NeedsReviewBadge";
 import { TheoryCard, FormulaCard, MistakeCard, ExampleCard } from "@/components/ContentCard";
+import MarkdownContent from "@/components/MarkdownContent";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +52,7 @@ export default async function TopicPage({
 
       <div className="space-y-6">
         {topic.theory && (
-          <TheoryCard>{topic.theory}</TheoryCard>
+          <TheoryCard><MarkdownContent content={topic.theory} /></TheoryCard>
         )}
 
         {topic.formulas.length > 0 && (
@@ -69,7 +70,7 @@ export default async function TopicPage({
                       <summary className="cursor-pointer text-xs font-semibold hover:underline">
                         Show derivation
                       </summary>
-                      <div className="mt-2 text-sm whitespace-pre-wrap">{f.derivation}</div>
+                      <div className="mt-2 text-sm"><MarkdownContent content={f.derivation} /></div>
                     </details>
                   )}
                 </FormulaCard>
@@ -91,7 +92,7 @@ export default async function TopicPage({
                     <summary className="cursor-pointer text-xs font-semibold hover:underline">
                       Show solution
                     </summary>
-                    <div className="mt-2 whitespace-pre-wrap">{ex.solution}</div>
+                    <div className="mt-2"><MarkdownContent content={ex.solution} /></div>
                   </details>
                 </ExampleCard>
               ))}
@@ -107,7 +108,7 @@ export default async function TopicPage({
             <div className="space-y-4">
               {topic.mistakes.map((m) => (
                 <MistakeCard key={m.id}>
-                  {m.description}
+                  <MarkdownContent content={m.description} />
                 </MistakeCard>
               ))}
             </div>

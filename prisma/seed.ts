@@ -1,13 +1,15 @@
 import "dotenv/config";
 import { PrismaSqlite } from "prisma-adapter-sqlite";
 import { PrismaClient } from "../src/generated/prisma/client";
+import type { PrismaClient as PrismaClientType } from "../src/generated/prisma/client";
 
-const adapter = new PrismaSqlite({
+const _adapter = new PrismaSqlite({
   url: process.env["DATABASE_URL"] ?? "file:./prisma/dev.db",
 });
-const prisma = new PrismaClient({ adapter });
+let prisma: PrismaClientType = new PrismaClient({ adapter: _adapter });
 
-async function main() {
+export async function main(p?: PrismaClientType) {
+  if (p) prisma = p;
   // Create Physics subject
   const physics = await prisma.subject.upsert({
     where: { name: "PHYSICS" },
@@ -417,11 +419,13 @@ t = 10 s`,
   console.log("All content marked needs_review: true");
 }
 
-main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+if (process.argv[1]?.endsWith("seed.ts")) {
+  main()
+    .catch((e) => {
+      console.error(e);
+      process.exit(1);
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+}

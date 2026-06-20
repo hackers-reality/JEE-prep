@@ -1,13 +1,15 @@
 import "dotenv/config";
 import { PrismaSqlite } from "prisma-adapter-sqlite";
 import { PrismaClient } from "../src/generated/prisma/client";
+import type { Difficulty, PrismaClient as PrismaClientType } from "../src/generated/prisma/client";
 
-const adapter = new PrismaSqlite({
+const _adapter = new PrismaSqlite({
   url: process.env["DATABASE_URL"] ?? "file:./prisma/dev.db",
 });
-const prisma = new PrismaClient({ adapter });
+let prisma: PrismaClientType = new PrismaClient({ adapter: _adapter });
 
-async function seedMath() {
+export async function seedMath(p?: PrismaClientType) {
+  if (p) prisma = p;
   const subject = await prisma.subject.upsert({
     where: { name: "MATHEMATICS" },
     update: {},
@@ -451,7 +453,7 @@ Bernoulli trials: n independent trials, each with success probability p`,
       for (let i = 0; i < t.examples.length; i++) {
         await prisma.solvedExample.upsert({
           where: { id: `ex-${t.id}-${i}` }, update: {},
-          create: { id: `ex-${t.id}-${i}`, topicId: t.id, question: t.examples[i].question, solution: t.examples[i].solution,             difficulty: t.examples[i].difficulty as any, orderIndex: i },
+          create: { id: `ex-${t.id}-${i}`, topicId: t.id, question: t.examples[i].question, solution: t.examples[i].solution,             difficulty: t.examples[i].difficulty as Difficulty, orderIndex: i },
         });
       }
       for (let i = 0; i < t.mistakes.length; i++) {
@@ -466,6 +468,8 @@ Bernoulli trials: n independent trials, each with success probability p`,
   console.log(`Mathematics seed complete — ${chapters.length} chapters`);
 }
 
-seedMath()
-  .catch((e) => { console.error(e); process.exit(1); })
-  .finally(() => prisma.$disconnect());
+if (process.argv[1]?.endsWith("seed-mathematics.ts")) {
+  seedMath()
+    .catch((e) => { console.error(e); process.exit(1); })
+    .finally(() => prisma.$disconnect());
+}

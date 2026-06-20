@@ -48,7 +48,7 @@ const questionBank: QWithSubject[] = [
   { question: "P(A|B) =", options: ["P(A∩B)/P(B)", "P(A∩B)/P(A)", "P(A)P(B)", "P(A)+P(B)"], correctAnswer: "P(A∩B)/P(B)", explanation: "Conditional probability formula.", difficulty: "EASY", topicTitle: "Probability and Distributions", subject: "MATHEMATICS" },
   { question: "AM ≥", options: ["GM", "HM", "Both GM and HM", "Neither"], correctAnswer: "Both GM and HM", explanation: "AM ≥ GM ≥ HM for positive numbers.", difficulty: "MEDIUM", topicTitle: "Arithmetic and Geometric Progressions", subject: "MATHEMATICS" },
   { question: "Matrix inverse exists if:", options: ["det = 0", "det ≠ 0", "Matrix is symmetric", "Matrix is square"], correctAnswer: "det ≠ 0", explanation: "Non-singular matrix (det ≠ 0) has inverse.", difficulty: "EASY", topicTitle: "Matrices and Determinants", subject: "MATHEMATICS" },
-  { question: "Which is a vector?", options: ["Speed", "Distance", "Displacement", "Mass"], correctAnswer: "Displacement", explanation: "Vector has magnitude and direction.", difficulty: "EASY", topicTitle: "Distance and Displacement", subject: "MATHEMATICS" },
+  { question: "Which is a vector?", options: ["Speed", "Distance", "Displacement", "Mass"], correctAnswer: "Displacement", explanation: "Vector has magnitude and direction.", difficulty: "EASY", topicTitle: "Distance and Displacement", subject: "PHYSICS" },
 ];
 
 function shuffle<T>(arr: T[]): T[] {
@@ -60,19 +60,72 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-export async function getTopicId(title: string): Promise<string | null> {
+export async function getTopicId(title: string, subject: string): Promise<string | null> {
   const topic = await prisma.topic.findFirst({
-    where: { title: { contains: title.replace(/[^a-zA-Z0-9 ]/g, "").trim() } },
+    where: {
+      title: { contains: title.trim() },
+      chapter: {
+        book: {
+          subject: { name: subject as any },
+        },
+      },
+    },
   });
+  if (!topic) {
+    console.warn(`[diagnostic-questions] No topic found for title="${title}" subject="${subject}"`);
+  }
   return topic?.id ?? null;
+}
+
+const difficultyWeights: Record<string, Record<string, number>> = {
+  BEGINNER: { EASY: 0.6, MEDIUM: 0.3, HARD: 0.1, JEE_ADVANCED: 0 },
+  SOME_FOUNDATION: { EASY: 0.2, MEDIUM: 0.5, HARD: 0.3, JEE_ADVANCED: 0 },
+  CONFIDENT: { EASY: 0, MEDIUM: 0.3, HARD: 0.5, JEE_ADVANCED: 0.2 },
+};
+
+function weightedSelect(pool: QWithSubject[], level: string, count: number): QWithSubject[] {
+  const weights = difficultyWeights[level] ?? difficultyWeights.SOME_FOUNDATION;
+  // Group by difficulty
+  const byDiff: Record<string, QWithSubject[]> = {};
+  for (const q of pool) {
+    if (!byDiff[q.difficulty]) byDiff[q.difficulty] = [];
+    byDiff[q.difficulty].push(q);
+  }
+  const selected: QWithSubject[] = [];
+  const poolSize = pool.length;
+  // With small pools, weighting is approximate: allocate slots proportionally
+  for (const [diff, weight] of Object.entries(weights)) {
+    const slotCount = Math.round(count * weight);
+    const diffPool = byDiff[diff] ?? [];
+    const available = Math.min(slotCount, diffPool.length);
+    selected.push(...shuffle(diffPool).slice(0, available));
+  }
+  // Fill remaining slots from whole pool
+  if (selected.length < count) {
+    const used = new Set(selected);
+    const remaining = shuffle(pool.filter((q) => !used.has(q)));
+    selected.push(...remaining.slice(0, count - selected.length));
+  }
+  return shuffle(selected).slice(0, count);
 }
 
 export async function generateDiagnosticTest(studentId: string, testNumber: number) {
   const subjects = ["PHYSICS", "CHEMISTRY", "MATHEMATICS"];
   const subject = subjects[testNumber];
 
+  // Read student's self-rated level for this subject
+  let level = "SOME_FOUNDATION";
+  try {
+    const rating = await prisma.selfRating.findFirst({
+      where: { studentId, subject: subject as any },
+    });
+    if (rating) level = rating.level;
+  } catch {}
+  // NOTE: With ≈12 questions per subject pool, difficulty weighting is approximate.
+  // Expanding the question bank would enable more meaningful differentiation.
+
   const pool = questionBank.filter((q) => q.subject === subject);
-  const selected = shuffle(pool).slice(0, 8);
+  const selected = weightedSelect(pool, level, 8);
 
   const mockTest = await prisma.mockTest.create({
     data: {
@@ -82,7 +135,56 @@ export async function generateDiagnosticTest(studentId: string, testNumber: numb
   });
 
   for (const q of selected) {
-    const topicId = await getTopicId(q.topicTitle);
+    const topicId = await getTopicId(q.topicTitle, q.subject);
+    await prisma.mockQuestion.create({
+      data: {
+        mockTestId: mockTest.id,
+        question: q.question,
+        options: JSON.stringify(q.options),
+        correctAnswer: q.correctAnswer,
+        explanation: q.explanation,
+        difficulty: q.difficulty,
+        needsReview: true,
+        topics: topicId ? { create: { topicId } } : undefined,
+      },
+    });
+  }
+
+  return prisma.mockTest.findUnique({
+    where: { id: mockTest.id },
+    include: { questions: { include: { topics: true } } },
+  });
+}
+
+export async function generateRegularMockTest(studentId: string) {
+  // Full-syllabus mock test: select questions across all subjects
+  const subjects = ["PHYSICS", "CHEMISTRY", "MATHEMATICS"];
+  const selected: QWithSubject[] = [];
+
+  for (const subject of subjects) {
+    let level = "SOME_FOUNDATION";
+    try {
+      const rating = await prisma.selfRating.findFirst({
+        where: {
+          studentId,
+          subject: subject as any,
+        },
+      });
+      if (rating) level = rating.level;
+    } catch {}
+    const pool = questionBank.filter((q) => q.subject === subject);
+    selected.push(...weightedSelect(pool, level, 5));
+  }
+
+  const mockTest = await prisma.mockTest.create({
+    data: {
+      studentId,
+      type: "REGULAR",
+    },
+  });
+
+  for (const q of selected) {
+    const topicId = await getTopicId(q.topicTitle, q.subject);
     await prisma.mockQuestion.create({
       data: {
         mockTestId: mockTest.id,
@@ -163,23 +265,29 @@ export async function computeTestResult(mockTestId: string) {
   focusNext.push(...weakTopics);
   focusNext.push(...strongTopics.filter((t) => !weakTopics.includes(t)));
 
-  // Subject breakdown from topic -> chapter -> book -> subject
+  // Subject breakdown — skip questions with no resolved topic
   const subjectBreakdown: Record<string, { correct: number; total: number }> = {};
   const subjectCache = new Map<string, string>();
   for (const q of test.questions) {
     const firstTopic = q.topics[0];
-    let subjName = "PHYSICS";
-    if (firstTopic) {
-      const cached = subjectCache.get(firstTopic.topicId);
-      if (cached) {
-        subjName = cached;
-      } else {
-        const topic = firstTopic.topic as any;
-        const chapter = topic?.chapter as any;
-        const book = chapter?.book as any;
-        subjName = book?.subject?.name ?? "PHYSICS";
-        subjectCache.set(firstTopic.topicId, subjName);
+    if (!firstTopic) {
+      console.warn(`[computeTestResult] Question "${q.question.substring(0, 50)}..." has no resolved topic — excluding from subject breakdown`);
+      continue;
+    }
+    const cached = subjectCache.get(firstTopic.topicId);
+    let subjName: string;
+    if (cached) {
+      subjName = cached;
+    } else {
+      const topic = firstTopic.topic as any;
+      const chapter = topic?.chapter as any;
+      const book = chapter?.book as any;
+      subjName = book?.subject?.name;
+      if (!subjName) {
+        console.warn(`[computeTestResult] Cannot determine subject for topic ${firstTopic.topicId} — excluding`);
+        continue;
       }
+      subjectCache.set(firstTopic.topicId, subjName);
     }
     if (!subjectBreakdown[subjName]) subjectBreakdown[subjName] = { correct: 0, total: 0 };
     subjectBreakdown[subjName].total++;

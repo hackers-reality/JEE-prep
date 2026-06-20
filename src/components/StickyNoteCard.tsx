@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useMemo } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 type CardColor = "yellow" | "blue" | "pink" | "green";
 
@@ -20,7 +20,10 @@ export function StickyNoteCard({
   children: ReactNode;
   className?: string;
 }) {
-  const rotation = useMemo(() => (Math.random() - 0.5) * 4, []);
+  const [rotation, setRotation] = useState(0);
+  useEffect(() => {
+    setRotation((Math.random() - 0.5) * 4);
+  }, []);
 
   return (
     <div

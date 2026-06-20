@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { deterministicRotation } from "@/lib/rotation";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,7 @@ export default async function SubjectsPage() {
               className="rounded-lg p-6 shadow-md transition-all duration-200 hover:shadow-xl hover:-translate-y-1"
               style={{
                 backgroundColor: "var(--sticky-yellow)",
-                transform: `rotate(${(Math.random() - 0.5) * 3}deg)`,
+                transform: `rotate(${deterministicRotation(subject.id, 3)}deg)`,
                 borderRadius: "6px 10px 8px 12px",
               }}
             >
