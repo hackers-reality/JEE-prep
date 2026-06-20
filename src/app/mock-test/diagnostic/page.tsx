@@ -32,7 +32,7 @@ export default function DiagnosticHubPage() {
     // First check if diagnostic tests already exist
     fetch("/api/student/tests")
       .then((r) => r.json())
-      .then((existingTests: any[]) => {
+      .then((existingTests: { id: string; type: string }[]) => {
         const diag = existingTests.filter((t) => t.type === "DIAGNOSTIC");
         if (diag.length >= 3) {
           // Load full test data including questions

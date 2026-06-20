@@ -1,6 +1,7 @@
 "use client";
 
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode } from "react";
+import { deterministicRotation } from "@/lib/rotation";
 
 type CardColor = "yellow" | "blue" | "pink" | "green";
 
@@ -15,15 +16,16 @@ export function StickyNoteCard({
   color = "yellow",
   children,
   className = "",
+  seed,
 }: {
   color?: CardColor;
   children: ReactNode;
   className?: string;
+  seed?: string;
 }) {
-  const [rotation, setRotation] = useState(0);
-  useEffect(() => {
-    setRotation((Math.random() - 0.5) * 4);
-  }, []);
+  // Deterministic rotation so server and client render identically (no
+  // hydration mismatch) and no setState-in-effect is needed.
+  const rotation = deterministicRotation(seed ?? color, 4);
 
   return (
     <div

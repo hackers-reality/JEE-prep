@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Inter, Kalam } from "next/font/google";
 import "./globals.css";
 
@@ -30,12 +31,12 @@ export default function RootLayout({
           className="px-6 py-3 flex items-center justify-between"
           style={{ borderBottom: "2px solid var(--grid-line)" }}
         >
-          <a href="/" className="font-hand text-xl font-bold" style={{ color: "var(--ink)" }}>
+          <Link href="/" className="font-hand text-xl font-bold" style={{ color: "var(--ink)" }}>
             JEE Prep
-          </a>
+          </Link>
           <nav className="flex gap-4 text-sm">
-            <a href="/subjects" className="hover:underline" style={{ color: "var(--ink)" }}>Subjects</a>
-            <a href="/settings" className="hover:underline" style={{ color: "var(--ink)" }}>Settings</a>
+            <Link href="/subjects" className="hover:underline" style={{ color: "var(--ink)" }}>Subjects</Link>
+            <Link href="/settings" className="hover:underline" style={{ color: "var(--ink)" }}>Settings</Link>
           </nav>
         </header>
         {children}

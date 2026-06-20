@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import type { SubjectName } from "@/generated/prisma/client";
 
 type QWithSubject = {
   question: string;
@@ -84,7 +85,7 @@ export async function getTopicId(title: string, subject: string): Promise<string
       title: { contains: title.trim() },
       chapter: {
         book: {
-          subject: { name: subject as any },
+          subject: { name: subject as SubjectName },
         },
       },
     },
@@ -147,7 +148,7 @@ export async function generateDiagnosticTest(studentId: string, testNumber: numb
   let level = "SOME_FOUNDATION";
   try {
     const rating = await prisma.selfRating.findFirst({
-      where: { studentId, subject: subject as any },
+      where: { studentId, subject: subject as SubjectName },
     });
     if (rating) level = rating.level;
   } catch {}
@@ -197,7 +198,7 @@ export async function generateRegularMockTest(studentId: string) {
       const rating = await prisma.selfRating.findFirst({
         where: {
           studentId,
-          subject: subject as any,
+          subject: subject as SubjectName,
         },
       });
       if (rating) level = rating.level;
@@ -240,7 +241,7 @@ export async function computeTestResult(mockTestId: string) {
   const test = await prisma.mockTest.findUnique({
     where: { id: mockTestId },
     include: {
-      questions: { include: { topics: { include: { topic: { include: { chapter: { include: { book: true } } } } } } } },
+      questions: { include: { topics: { include: { topic: { include: { chapter: { include: { book: { include: { subject: true } } } } } } } } } },
       student: { include: { topicMastery: true } },
     },
   });
@@ -284,7 +285,7 @@ export async function computeTestResult(mockTestId: string) {
   const strong: Tiered[] = [];
   const neutral: Tiered[] = [];
 
-  const masteryWrites: Promise<unknown>[] = [];
+  const masteryWrites: ReturnType<typeof prisma.topicMastery.upsert>[] = [];
 
   for (const [topicId, seen] of topicSeenCount) {
     const mastery = test.student.topicMastery.find((m) => m.topicId === topicId);
@@ -342,9 +343,9 @@ export async function computeTestResult(mockTestId: string) {
     if (cached) {
       subjName = cached;
     } else {
-      const topic = firstTopic.topic as any;
-      const chapter = topic?.chapter as any;
-      const book = chapter?.book as any;
+      const topic = firstTopic.topic;
+      const chapter = topic?.chapter;
+      const book = chapter?.book;
       subjName = book?.subject?.name;
       if (!subjName) {
         console.warn(`[computeTestResult] Cannot determine subject for topic ${firstTopic.topicId} — excluding`);
@@ -360,7 +361,7 @@ export async function computeTestResult(mockTestId: string) {
   // Persist mastery updates, the result row, and takenAt atomically so a
   // partial failure cannot leave inflated mastery without a result row.
   const txResults = await prisma.$transaction([
-    ...(masteryWrites as any[]),
+    ...masteryWrites,
     prisma.mockTestResult.create({
       data: {
         mockTestId,
