@@ -108,7 +108,7 @@ export default function OnboardingPage() {
             <ol className="text-xs space-y-2 bg-white/60 p-4 rounded" style={{ color: "var(--ink)" }}>
               <li><strong>1.</strong> Go to <a href="https://build.nvidia.com" target="_blank" rel="noopener" className="underline font-semibold">build.nvidia.com</a></li>
               <li><strong>2.</strong> Sign up or log in (free account)</li>
-              <li><strong>3.</strong> Click on any model and select <em>"Get API Key"</em></li>
+              <li><strong>3.</strong> Click on any model and select <em>&ldquo;Get API Key&rdquo;</em></li>
               <li><strong>4.</strong> Copy your key and paste it below</li>
             </ol>
             <input

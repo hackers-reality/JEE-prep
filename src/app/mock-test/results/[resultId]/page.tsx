@@ -40,7 +40,6 @@ export default function TestResultsPage() {
   const [showReview, setShowReview] = useState(false);
 
   useEffect(() => {
-    setLoading(true);
     fetch(`/api/mock-test/results/${resultId}`)
       .then((r) => r.json())
       .then((data) => setResult(data))
