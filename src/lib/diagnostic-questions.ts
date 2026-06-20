@@ -84,7 +84,7 @@ export async function getTopicId(title: string, subject: string): Promise<string
       title: { contains: title.trim() },
       chapter: {
         book: {
-          subject: { name: subject as any },
+          subject: { name: subject as SubjectName },
         },
       },
     },
