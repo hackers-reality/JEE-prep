@@ -241,7 +241,7 @@ export async function computeTestResult(mockTestId: string) {
   const test = await prisma.mockTest.findUnique({
     where: { id: mockTestId },
     include: {
-      questions: { include: { topics: { include: { topic: { include: { chapter: { include: { book: true } } } } } } } },
+      questions: { include: { topics: { include: { topic: { include: { chapter: { include: { book: { include: { subject: true } } } } } } } } } },
       student: { include: { topicMastery: true } },
     },
   });

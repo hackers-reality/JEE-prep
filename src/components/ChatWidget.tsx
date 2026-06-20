@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+
 import MarkdownContent from "./MarkdownContent";
 import {
   getApiKey,
@@ -19,9 +20,13 @@ export function ChatWidget({ topicId, topicTitle, topicContext }: { topicId: str
   const [loading, setLoading] = useState(false);
   const [apiKey, setApiKeyState] = useState(() => getApiKey());
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const lastTopicRef = useRef(topicId);
 
   useEffect(() => {
-    // Re-sync history when the user navigates between topics.
+    // Initial render is already handled by the lazy useState initialisers;
+    // only re-sync when the user actually navigates to a different topic.
+    if (lastTopicRef.current === topicId) return;
+    lastTopicRef.current = topicId;
     setApiKeyState(getApiKey());
     setMessages(getChatHistory(topicId));
   }, [topicId]);
