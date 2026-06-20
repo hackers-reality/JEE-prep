@@ -359,8 +359,8 @@ export async function computeTestResult(mockTestId: string) {
 
   // Persist mastery updates, the result row, and takenAt atomically so a
   // partial failure cannot leave inflated mastery without a result row.
-  const [, result] = await prisma.$transaction([
-    ...masteryWrites as any[],
+  const txResults = await prisma.$transaction([
+    ...(masteryWrites as any[]),
     prisma.mockTestResult.create({
       data: {
         mockTestId,
@@ -379,5 +379,8 @@ export async function computeTestResult(mockTestId: string) {
     }),
   ]);
 
+  // The result row is the second-to-last entry (mastery writes come first,
+  // then mockTestResult.create, then mockTest.update).
+  const result = txResults[txResults.length - 2];
   return result;
 }
