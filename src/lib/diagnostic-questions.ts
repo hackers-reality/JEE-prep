@@ -51,10 +51,28 @@ const questionBank: QWithSubject[] = [
   { question: "Which is a vector?", options: ["Speed", "Distance", "Displacement", "Mass"], correctAnswer: "Displacement", explanation: "Vector has magnitude and direction.", difficulty: "EASY", topicTitle: "Distance and Displacement", subject: "PHYSICS" },
 ];
 
-function shuffle<T>(arr: T[]): T[] {
+// Deterministic, seedable PRNG (mulberry32) so that a given student gets a
+// reproducible, auditable test instead of a different one on every request.
+function makeRng(seed: string): () => number {
+  let h = 1779033703 ^ seed.length;
+  for (let i = 0; i < seed.length; i++) {
+    h = Math.imul(h ^ seed.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  let a = h >>> 0;
+  return function () {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function shuffle<T>(arr: T[], rng: () => number = Math.random): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rng() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
@@ -83,7 +101,12 @@ const difficultyWeights: Record<string, Record<string, number>> = {
   CONFIDENT: { EASY: 0, MEDIUM: 0.3, HARD: 0.5, JEE_ADVANCED: 0.2 },
 };
 
-function weightedSelect(pool: QWithSubject[], level: string, count: number): QWithSubject[] {
+function weightedSelect(
+  pool: QWithSubject[],
+  level: string,
+  count: number,
+  rng: () => number = Math.random
+): QWithSubject[] {
   const weights = difficultyWeights[level] ?? difficultyWeights.SOME_FOUNDATION;
   // Group by difficulty
   const byDiff: Record<string, QWithSubject[]> = {};
@@ -92,26 +115,33 @@ function weightedSelect(pool: QWithSubject[], level: string, count: number): QWi
     byDiff[q.difficulty].push(q);
   }
   const selected: QWithSubject[] = [];
-  const poolSize = pool.length;
   // With small pools, weighting is approximate: allocate slots proportionally
   for (const [diff, weight] of Object.entries(weights)) {
     const slotCount = Math.round(count * weight);
     const diffPool = byDiff[diff] ?? [];
     const available = Math.min(slotCount, diffPool.length);
-    selected.push(...shuffle(diffPool).slice(0, available));
+    selected.push(...shuffle(diffPool, rng).slice(0, available));
   }
   // Fill remaining slots from whole pool
   if (selected.length < count) {
     const used = new Set(selected);
-    const remaining = shuffle(pool.filter((q) => !used.has(q)));
+    const remaining = shuffle(pool.filter((q) => !used.has(q)), rng);
     selected.push(...remaining.slice(0, count - selected.length));
   }
-  return shuffle(selected).slice(0, count);
+  return shuffle(selected, rng).slice(0, count);
 }
 
 export async function generateDiagnosticTest(studentId: string, testNumber: number) {
   const subjects = ["PHYSICS", "CHEMISTRY", "MATHEMATICS"];
+  if (!Number.isInteger(testNumber) || testNumber < 0 || testNumber >= subjects.length) {
+    throw new Error(
+      `Invalid testNumber ${testNumber}: must be 0..${subjects.length - 1} (one per subject)`
+    );
+  }
   const subject = subjects[testNumber];
+
+  // Deterministic per (student, subject) so a re-generated diagnostic is reproducible.
+  const rng = makeRng(`${studentId}:diagnostic:${testNumber}`);
 
   // Read student's self-rated level for this subject
   let level = "SOME_FOUNDATION";
@@ -125,7 +155,7 @@ export async function generateDiagnosticTest(studentId: string, testNumber: numb
   // Expanding the question bank would enable more meaningful differentiation.
 
   const pool = questionBank.filter((q) => q.subject === subject);
-  const selected = weightedSelect(pool, level, 8);
+  const selected = weightedSelect(pool, level, 8, rng);
 
   const mockTest = await prisma.mockTest.create({
     data: {
@@ -172,8 +202,9 @@ export async function generateRegularMockTest(studentId: string) {
       });
       if (rating) level = rating.level;
     } catch {}
+    const rng = makeRng(`${studentId}:regular:${subject}`);
     const pool = questionBank.filter((q) => q.subject === subject);
-    selected.push(...weightedSelect(pool, level, 5));
+    selected.push(...weightedSelect(pool, level, 5, rng));
   }
 
   const mockTest = await prisma.mockTest.create({
@@ -215,6 +246,12 @@ export async function computeTestResult(mockTestId: string) {
   });
   if (!test) throw new Error("Test not found");
 
+  // Idempotency: if this test was already analyzed, return the existing result
+  // instead of double-incrementing TopicMastery and crashing on the unique
+  // MockTestResult.mockTestId constraint.
+  const existing = await prisma.mockTestResult.findUnique({ where: { mockTestId } });
+  if (existing) return existing;
+
   const total = test.questions.length;
   const correct = test.questions.filter((q) => q.isCorrect === true).length;
   const incorrect = total - correct;
@@ -231,9 +268,23 @@ export async function computeTestResult(mockTestId: string) {
     }
   }
 
-  const weakTopics: string[] = [];
-  const strongTopics: string[] = [];
-  const focusNext: string[] = [];
+  // --- Deterministic, auditable topic tiering (Section 7b) ---------------
+  // These thresholds are fixed rules, NOT an LLM judgement. A topic is:
+  //   weak   : cumulative accuracy < WEAK_MAX
+  //   strong : cumulative accuracy >= STRONG_MIN AND enough samples seen
+  //   neutral: anything in between (not surfaced as weak or strong)
+  // focusNext is ordered: weakest first (lowest accuracy, then fewest samples),
+  // followed by neutral topics that still need more practice.
+  const WEAK_MAX = 0.4;
+  const STRONG_MIN = 0.75;
+  const MIN_SAMPLES_FOR_STRONG = 3;
+
+  type Tiered = { topicId: string; accuracy: number; totalSeen: number };
+  const weak: Tiered[] = [];
+  const strong: Tiered[] = [];
+  const neutral: Tiered[] = [];
+
+  const masteryWrites: Promise<unknown>[] = [];
 
   for (const [topicId, seen] of topicSeenCount) {
     const mastery = test.student.topicMastery.find((m) => m.topicId === topicId);
@@ -244,26 +295,38 @@ export async function computeTestResult(mockTestId: string) {
     const totalCorrect = prevCorrect + newCorrect;
     const accuracy = totalSeen > 0 ? totalCorrect / totalSeen : 0;
 
-    if (accuracy < 0.5) weakTopics.push(topicId);
-    else strongTopics.push(topicId);
+    const entry: Tiered = { topicId, accuracy, totalSeen };
+    if (accuracy < WEAK_MAX) weak.push(entry);
+    else if (accuracy >= STRONG_MIN && totalSeen >= MIN_SAMPLES_FOR_STRONG) strong.push(entry);
+    else neutral.push(entry);
 
-    await prisma.topicMastery.upsert({
-      where: { studentId_topicId: { studentId: test.studentId, topicId } },
-      update: {
-        questionsSeen: { increment: seen },
-        questionsCorrect: { increment: newCorrect },
-      },
-      create: {
-        studentId: test.studentId,
-        topicId,
-        questionsSeen: seen,
-        questionsCorrect: newCorrect,
-      },
-    });
+    masteryWrites.push(
+      prisma.topicMastery.upsert({
+        where: { studentId_topicId: { studentId: test.studentId, topicId } },
+        update: {
+          questionsSeen: { increment: seen },
+          questionsCorrect: { increment: newCorrect },
+        },
+        create: {
+          studentId: test.studentId,
+          topicId,
+          questionsSeen: seen,
+          questionsCorrect: newCorrect,
+        },
+      })
+    );
   }
 
-  focusNext.push(...weakTopics);
-  focusNext.push(...strongTopics.filter((t) => !weakTopics.includes(t)));
+  // Deterministic ordering: lowest accuracy first, then fewest samples, then id.
+  const byPriority = (a: Tiered, b: Tiered) =>
+    a.accuracy - b.accuracy || a.totalSeen - b.totalSeen || a.topicId.localeCompare(b.topicId);
+  weak.sort(byPriority);
+  neutral.sort(byPriority);
+  strong.sort((a, b) => b.accuracy - a.accuracy || a.topicId.localeCompare(b.topicId));
+
+  const weakTopics = weak.map((t) => t.topicId);
+  const strongTopics = strong.map((t) => t.topicId);
+  const focusNext = [...weakTopics, ...neutral.map((t) => t.topicId)];
 
   // Subject breakdown — skip questions with no resolved topic
   const subjectBreakdown: Record<string, { correct: number; total: number }> = {};
@@ -294,23 +357,27 @@ export async function computeTestResult(mockTestId: string) {
     if (q.isCorrect === true) subjectBreakdown[subjName].correct++;
   }
 
-  const result = await prisma.mockTestResult.create({
-    data: {
-      mockTestId,
-      totalQuestions: total,
-      correctCount: correct,
-      incorrectCount: incorrect,
-      subjectBreakdown: JSON.stringify(subjectBreakdown),
-      weakTopicIds: JSON.stringify(weakTopics),
-      strongTopicIds: JSON.stringify(strongTopics),
-      focusNextTopicIds: JSON.stringify(focusNext),
-    },
-  });
-
-  await prisma.mockTest.update({
-    where: { id: mockTestId },
-    data: { takenAt: new Date() },
-  });
+  // Persist mastery updates, the result row, and takenAt atomically so a
+  // partial failure cannot leave inflated mastery without a result row.
+  const [, result] = await prisma.$transaction([
+    ...masteryWrites as any[],
+    prisma.mockTestResult.create({
+      data: {
+        mockTestId,
+        totalQuestions: total,
+        correctCount: correct,
+        incorrectCount: incorrect,
+        subjectBreakdown: JSON.stringify(subjectBreakdown),
+        weakTopicIds: JSON.stringify(weakTopics),
+        strongTopicIds: JSON.stringify(strongTopics),
+        focusNextTopicIds: JSON.stringify(focusNext),
+      },
+    }),
+    prisma.mockTest.update({
+      where: { id: mockTestId },
+      data: { takenAt: new Date() },
+    }),
+  ]);
 
   return result;
 }
