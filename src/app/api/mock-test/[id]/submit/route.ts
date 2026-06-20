@@ -15,16 +15,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (test.takenAt) return NextResponse.json({ error: "Already submitted" }, { status: 400 });
 
     let correct = 0;
-    for (const q of test.questions) {
+    const updates = test.questions.map((q) => {
       const studentAnswer = answers[q.id] ?? null;
       const isCorrect = studentAnswer === q.correctAnswer;
       if (isCorrect) correct++;
-
-      await prisma.mockQuestion.update({
+      return prisma.mockQuestion.update({
         where: { id: q.id },
         data: { studentAnswer, isCorrect },
       });
-    }
+    });
+    await prisma.$transaction(updates);
 
     return NextResponse.json({
       mockTestId: id,
