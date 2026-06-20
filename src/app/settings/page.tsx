@@ -11,14 +11,9 @@ import {
 import Link from "next/link";
 
 export default function SettingsPage() {
-  const [key, setKey] = useState("");
-  const [model, setModel] = useState("");
+  const [key, setKey] = useState(() => getApiKey());
+  const [model, setModel] = useState(() => getSelectedModel());
   const [saved, setSaved] = useState(false);
-
-  useEffect(() => {
-    setKey(getApiKey());
-    setModel(getSelectedModel());
-  }, []);
 
   function handleSave() {
     setApiKey(key);
