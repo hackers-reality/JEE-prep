@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getCurrentStudent } from "@/lib/auth";
 
 export async function GET() {
-  const student = await prisma.student.findFirst({ orderBy: { createdAt: "asc" } });
-  if (!student) return NextResponse.json([]);
+  const student = await getCurrentStudent();
+  if (!student) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const tests = await prisma.mockTest.findMany({
     where: { studentId: student.id },
