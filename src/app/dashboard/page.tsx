@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { ensureDatabaseSchema } from "@/lib/database";
+import { getCurrentStudent } from "@/lib/auth";
 import FocusTimer from "@/components/FocusTimer";
 
 export const dynamic = "force-dynamic";
@@ -9,11 +11,10 @@ const subjectLabel = (value: string) => value.charAt(0) + value.slice(1).toLower
 
 export default async function DashboardPage() {
   await ensureDatabaseSchema();
-  const student = await prisma.student.findFirst({ include: { selfRatings: true }, orderBy: { createdAt: "asc" } });
+  const student = await getCurrentStudent();
 
-  if (!student) {
-    return <main className="max-w-5xl mx-auto p-6 min-h-[80vh] flex items-center justify-center"><div className="text-center"><h1 className="font-hand text-4xl font-bold mb-3">Your JEE command center</h1><p className="opacity-70 mb-6">Finish onboarding first and we&apos;ll build your study plan.</p><Link href="/onboarding" className="sticky-button">Start setup</Link></div></main>;
-  }
+  if (!student) redirect("/login");
+  if (!student.onboardingComplete) redirect("/onboarding");
 
   const [totalTopics, reviewedTopics, mastery, tests, reviewQueue, studySessions] = await Promise.all([
     prisma.topic.count(),
@@ -41,7 +42,7 @@ export default async function DashboardPage() {
 
   return (
     <main className="max-w-6xl mx-auto p-5 sm:p-6 space-y-6">
-      <section className="paper-card p-6"><div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-5"><div><p className="text-sm opacity-60">JEE 2028 • personal command center</p><h1 className="font-hand text-4xl sm:text-5xl font-bold mt-1">Lock in, {displayName}. 🫡</h1><p className="mt-2 opacity-70">One focused session at a time. No productivity cosplay.</p></div><div className="flex flex-wrap gap-3"><Link href="/subjects" className="sticky-button">Study subjects</Link><Link href="/mock-test/regular" className="sticky-button blue">Take a test</Link><Link href="/chat" className="sticky-button green">Ask AI</Link></div></div></section>
+      <section className="paper-card p-6"><div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-5"><div><p className="text-sm opacity-60">JEE 2028 • personal command center</p><h1 className="font-hand text-4xl sm:text-5xl font-bold mt-1">Lock in, {displayName}. 🫡</h1><p className="mt-2 opacity-70">One focused session at a time. No productivity cosplay.</p></div><div className="flex flex-wrap gap-3"><Link href="/subjects" className="sticky-button">Study subjects</Link><Link href="/mock-test/regular" className="sticky-button blue">Take a test</Link><Link href="/chat" className="sticky-button green">Ask AI</Link><form action="/api/auth/logout" method="post"><button className="sticky-button">Sign out</button></form></div></div></section>
 
       <section className="grid grid-cols-2 lg:grid-cols-6 gap-4"><Stat title="Topics reviewed" value={`${reviewedTopics}/${totalTopics}`} sub={`${completion}% content progress`} /><Stat title="Mastered" value={String(mastered)} sub="80%+ question accuracy" /><Stat title="Tests taken" value={String(tests.length)} sub="Keep the feedback loop alive" /><Stat title="Daily target" value={student.preferredDailyHours ? `${student.preferredDailyHours}h` : "Set it"} sub={student.jeeTarget === "MAIN_AND_ADVANCED" ? "Main + Advanced" : "JEE Main"} /><Stat title="7-day study" value={`${Math.floor(weekMinutes / 60)}h ${weekMinutes % 60}m`} sub="Recorded focus time" /><Stat title="Streak" value={`${streak}d`} sub="Consecutive study days" /></section>
 
