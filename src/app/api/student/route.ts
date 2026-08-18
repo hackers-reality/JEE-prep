@@ -1,63 +1,48 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ensureDatabaseSchema } from "@/lib/database";
+import { getCurrentStudent } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: Request) {
+export async function GET() {
   await ensureDatabaseSchema();
-  const url = new URL(request.url);
-  const id = url.searchParams.get("id");
-  const student = id
-    ? await prisma.student.findUnique({ where: { id }, include: { selfRatings: true } })
-    : await prisma.student.findFirst({ include: { selfRatings: true }, orderBy: { createdAt: "asc" } });
+  const student = await getCurrentStudent();
   return NextResponse.json(student);
 }
 
 export async function POST(request: Request) {
   await ensureDatabaseSchema();
   const body = await request.json();
-
-  let student = await prisma.student.findFirst({ orderBy: { createdAt: "asc" } });
-
-  if (body.id) {
-    student = await prisma.student.findUnique({ where: { id: body.id } });
-  }
+  const student = await getCurrentStudent();
 
   if (!student) {
-    student = await prisma.student.create({
-      data: { name: body.name ?? "Student", onboardingComplete: false },
-    });
+    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
 
-  if (body.onboardingComplete) {
-    await prisma.student.update({
-      where: { id: student.id },
-      data: {
-        name: body.name ?? student.name ?? "Student",
-        prepStage: body.prepStage,
-        jeeTarget: body.jeeTarget,
-        preferredDailyHours: body.preferredDailyHours ? parseInt(body.preferredDailyHours, 10) : null,
-        onboardingComplete: true,
-      },
-    });
+  const data: Record<string, unknown> = {};
+  if (body.name !== undefined) data.name = String(body.name).trim() || student.name || "Student";
 
-    if (Array.isArray(body.selfRatings)) {
-      for (const sr of body.selfRatings) {
-        if (!sr.subject || !sr.level) continue;
-        await prisma.selfRating.upsert({
-          where: { studentId_subject: { studentId: student.id, subject: sr.subject } },
-          update: { level: sr.level },
-          create: { studentId: student.id, subject: sr.subject, level: sr.level },
-        });
-      }
+  if (body.onboardingComplete) {
+    data.prepStage = body.prepStage;
+    data.jeeTarget = body.jeeTarget;
+    data.preferredDailyHours = body.preferredDailyHours ? parseInt(body.preferredDailyHours, 10) : null;
+    data.onboardingComplete = true;
+  }
+
+  await prisma.student.update({ where: { id: student.id }, data });
+
+  if (body.onboardingComplete && Array.isArray(body.selfRatings)) {
+    for (const sr of body.selfRatings) {
+      if (!sr.subject || !sr.level) continue;
+      await prisma.selfRating.upsert({
+        where: { studentId_subject: { studentId: student.id, subject: sr.subject } },
+        update: { level: sr.level },
+        create: { studentId: student.id, subject: sr.subject, level: sr.level },
+      });
     }
   }
 
-  const updated = await prisma.student.findUnique({
-    where: { id: student.id },
-    include: { selfRatings: true },
-  });
-
+  const updated = await prisma.student.findUnique({ where: { id: student.id }, include: { selfRatings: true } });
   return NextResponse.json(updated);
 }
