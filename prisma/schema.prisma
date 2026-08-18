@@ -30,7 +30,7 @@ model Subject {
   id        String   @id @default(cuid())
   name      SubjectName @unique
   books     Book[]
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 }
 
 model Book {
@@ -54,7 +54,7 @@ model Chapter {
   bookId     String
   orderIndex Int
   topics     Topic[]
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
 
   @@index([bookId])
 }
@@ -76,8 +76,9 @@ model Topic {
   diagrams        Diagram[]
   mockQuestions   MockQuestionTopic[]
   topicMastery    TopicMastery[]
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  discussionPosts DiscussionPost[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   @@index([chapterId])
   @@index([needsReview])
@@ -146,19 +147,23 @@ enum JeeTarget {
 }
 
 model Student {
-  id                      String        @id @default(cuid())
-  name                    String?
-  onboardingComplete      Boolean       @default(false)
-  prepStage               PrepStage?
-  jeeTarget               JeeTarget?
-  preferredDailyHours     Int?
-  selfRatings             SelfRating[]
+  id                       String              @id @default(cuid())
+  name                     String?
+  onboardingComplete       Boolean             @default(false)
+  prepStage                PrepStage?
+  jeeTarget                JeeTarget?
+  preferredDailyHours      Int?
   nvidiaNimKeyServerSynced String?
-  mockTests               MockTest[]
-  topicMastery            TopicMastery[]
+  selfRatings              SelfRating[]
+  mockTests                MockTest[]
+  topicMastery             TopicMastery[]
   studySessions            StudySession[]
-  createdAt               DateTime      @default(now())
-  updatedAt               DateTime      @updatedAt
+  discussionPosts          DiscussionPost[]
+  discussionComments       DiscussionComment[]
+  discussionVotes          DiscussionVote[]
+  discussionBookmarks      DiscussionBookmark[]
+  createdAt                DateTime            @default(now())
+  updatedAt                DateTime            @updatedAt
 }
 
 model SelfRating {
@@ -229,17 +234,17 @@ model MockQuestionTopic {
 }
 
 model MockTestResult {
-  id               String   @id @default(cuid())
-  mockTest         MockTest @relation(fields: [mockTestId], references: [id])
-  mockTestId       String   @unique
-  totalQuestions   Int
-  correctCount     Int
-  incorrectCount   Int
-  subjectBreakdown String
-  weakTopicIds     String
-  strongTopicIds   String
+  id                String   @id @default(cuid())
+  mockTest          MockTest @relation(fields: [mockTestId], references: [id])
+  mockTestId        String   @unique
+  totalQuestions    Int
+  correctCount      Int
+  incorrectCount    Int
+  subjectBreakdown  String
+  weakTopicIds      String
+  strongTopicIds    String
   focusNextTopicIds String
-  computedAt       DateTime @default(now())
+  computedAt        DateTime @default(now())
 }
 
 model TopicMastery {
@@ -254,4 +259,68 @@ model TopicMastery {
 
   @@unique([studentId, topicId])
   @@index([studentId])
+}
+
+model DiscussionPost {
+  id          String                 @id @default(cuid())
+  student     Student                @relation(fields: [studentId], references: [id])
+  studentId   String
+  topic       Topic?                 @relation(fields: [topicId], references: [id])
+  topicId     String?
+  subject     SubjectName?
+  title       String
+  body        String
+  imageUrl    String?
+  category    String                 @default("GENERAL")
+  isResolved  Boolean                @default(false)
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+  comments    DiscussionComment[]
+  votes       DiscussionVote[]
+  bookmarks   DiscussionBookmark[]
+
+  @@index([createdAt])
+  @@index([subject, createdAt])
+  @@index([topicId, createdAt])
+  @@index([studentId, createdAt])
+}
+
+model DiscussionComment {
+  id        String          @id @default(cuid())
+  post      DiscussionPost  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId    String
+  student   Student         @relation(fields: [studentId], references: [id])
+  studentId String
+  body      String
+  isBest    Boolean         @default(false)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@index([postId, createdAt])
+  @@index([studentId, createdAt])
+}
+
+model DiscussionVote {
+  id        String         @id @default(cuid())
+  post      DiscussionPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId    String
+  student   Student        @relation(fields: [studentId], references: [id])
+  studentId String
+  value     Int            @default(1)
+  createdAt DateTime       @default(now())
+
+  @@unique([postId, studentId])
+  @@index([postId])
+}
+
+model DiscussionBookmark {
+  id        String         @id @default(cuid())
+  post      DiscussionPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId    String
+  student   Student        @relation(fields: [studentId], references: [id])
+  studentId String
+  createdAt DateTime       @default(now())
+
+  @@unique([postId, studentId])
+  @@index([studentId, createdAt])
 }
