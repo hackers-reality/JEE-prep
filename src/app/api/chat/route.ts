@@ -1,21 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentStudent } from "@/lib/auth";
 import { AI_MODELS, DEFAULT_AI_MODEL, isAllowedAIModel } from "@/lib/ai-models";
 
 const NVIDIA_API_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
 
 export async function POST(req: NextRequest) {
   try {
-    const student = await getCurrentStudent();
-    if (!student) return NextResponse.json({ error: "Sign in to use the JEE Tutor." }, { status: 401 });
-
     const body = await req.json();
     const requestedModel = typeof body.model === "string" ? body.model : DEFAULT_AI_MODEL;
     const model = isAllowedAIModel(requestedModel) ? requestedModel : DEFAULT_AI_MODEL;
     const messages = Array.isArray(body.messages) ? body.messages : [];
-    const apiKey = process.env.NVIDIA_API_KEY;
+    const apiKey = typeof body.apiKey === "string" ? body.apiKey.trim() : "";
 
-    if (!apiKey) return NextResponse.json({ error: "AI provider is not configured on the server." }, { status: 503 });
+    if (!apiKey) return NextResponse.json({ error: "Add your NVIDIA API key in Settings to use the JEE Tutor." }, { status: 401 });
     if (!messages.length) return NextResponse.json({ error: "At least one message is required." }, { status: 400 });
     if (messages.length > 30) return NextResponse.json({ error: "Conversation is too long. Start a fresh chat." }, { status: 413 });
 
