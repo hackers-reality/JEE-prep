@@ -9,6 +9,8 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // Vercel only needs a URL while generating the Prisma client during build.
+    // Runtime production persistence will be configured separately.
+    url: process.env["DATABASE_URL"] ?? "file:./prisma/ci.db",
   },
 });
