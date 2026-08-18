@@ -4,6 +4,7 @@ import { main as seedBase } from "../../prisma/seed";
 import { seedPhysics } from "../../prisma/seed-physics";
 import { seedChemistry } from "../../prisma/seed-chemistry";
 import { seedMath } from "../../prisma/seed-mathematics";
+import { seedBookCatalogue } from "../../prisma/seed-books";
 
 let seeding = false;
 let seedComplete = false;
@@ -26,23 +27,23 @@ export async function checkAndSeed(): Promise<boolean> {
   try {
     await ensureDatabaseSchema();
 
-    // The base seed only creates Physics. The old implementation treated
-    // any existing topic as a complete seed, which meant production could
-    // permanently stop at a tiny Physics-only dataset. Verify all three
-    // required subjects before declaring the database ready.
     const subjects = await prisma.subject.findMany({
       where: { name: { in: [...REQUIRED_SUBJECTS] } },
       select: { name: true },
     });
     const subjectNames = new Set(subjects.map((subject) => subject.name));
-
     const fullySeeded = REQUIRED_SUBJECTS.every((name) => subjectNames.has(name));
+
     if (!fullySeeded) {
       await seedBase(prisma);
       await seedPhysics(prisma);
       await seedChemistry(prisma);
       await seedMath(prisma);
     }
+
+    // Catalogue metadata is idempotent and can run independently of content
+    // seeding, so new reference books appear without re-seeding every topic.
+    await seedBookCatalogue(prisma);
 
     const finalSubjects = await prisma.subject.findMany({
       where: { name: { in: [...REQUIRED_SUBJECTS] } },
