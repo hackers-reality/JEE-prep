@@ -5,21 +5,11 @@ import { ChatWidget } from "@/components/ChatWidget";
 
 export const dynamic = "force-dynamic";
 
-export default async function ChatPage({
-  params,
-}: {
-  params: Promise<{ topicId: string }>;
-}) {
+export default async function ChatPage({ params }: { params: Promise<{ topicId: string }> }) {
   const { topicId } = await params;
   const topic = await prisma.topic.findUnique({
     where: { id: topicId },
-    include: {
-      chapter: {
-        include: {
-          book: { include: { subject: true } },
-        },
-      },
-    },
+    include: { chapter: { include: { book: { include: { subject: true } } } } },
   });
   if (!topic) notFound();
 
@@ -32,28 +22,17 @@ export default async function ChatPage({
     topic.theory,
   ].join("\n");
 
+  const backHref = `/subjects/${topic.chapter.book.subjectId}/books/${topic.chapter.bookId}/chapters/${topic.chapterId}`;
+
   return (
-    <main className="max-w-4xl mx-auto p-6">
-      <Link
-        href={`/topics/${topicId}`}
-        className="text-sm mb-4 inline-block hover:underline"
-        style={{ color: "var(--ink)" }}
-      >
-        ← Back to {topic.title}
-      </Link>
-
-      <h1
-        className="font-hand text-2xl font-bold mb-4"
-        style={{ color: "var(--ink)" }}
-      >
-        Ask a Doubt
-      </h1>
-
-      <ChatWidget
-        topicId={topicId}
-        topicTitle={topic.title}
-        topicContext={context}
-      />
+    <main className="max-w-5xl mx-auto p-5 sm:p-6 space-y-5">
+      <Link href={backHref} className="text-sm hover:underline" style={{ color: "var(--ink)" }}>← Back to {topic.title}</Link>
+      <section className="paper-card p-6">
+        <p className="text-xs uppercase tracking-widest opacity-50">Topic tutor</p>
+        <h1 className="font-hand text-3xl font-bold mt-1">Ask a doubt — {topic.title}</h1>
+        <p className="text-sm opacity-60 mt-2">The tutor is grounded in this topic's material and the conversation stays focused on JEE preparation.</p>
+      </section>
+      <ChatWidget topicId={topicId} topicTitle={topic.title} topicContext={context} />
     </main>
   );
 }
