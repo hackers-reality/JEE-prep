@@ -8,7 +8,7 @@ export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -22,7 +22,7 @@ export default function LoginPage() {
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ name, username, password }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Something went wrong.");
@@ -49,7 +49,7 @@ export default function LoginPage() {
 
         <form onSubmit={submit} className="space-y-4 mt-6">
           {mode === "register" && <label className="block"><span className="text-sm font-semibold">Name</span><input value={name} onChange={(e) => setName(e.target.value)} required className="mt-1 w-full rounded-xl border p-3 bg-white/70" placeholder="Arnav" /></label>}
-          <label className="block"><span className="text-sm font-semibold">Email</span><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="mt-1 w-full rounded-xl border p-3 bg-white/70" placeholder="you@example.com" autoComplete="email" /></label>
+          <label className="block"><span className="text-sm font-semibold">Username</span><input value={username} onChange={(e) => setUsername(e.target.value)} required minLength={3} maxLength={24} pattern="[A-Za-z0-9_]+" className="mt-1 w-full rounded-xl border p-3 bg-white/70" placeholder="your_username" autoComplete="username" /></label>
           <label className="block"><span className="text-sm font-semibold">Password</span><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} className="mt-1 w-full rounded-xl border p-3 bg-white/70" placeholder="At least 8 characters" autoComplete={mode === "login" ? "current-password" : "new-password"} /></label>
           {error && <p className="text-sm font-semibold" style={{ color: "#b42318" }}>{error}</p>}
           <button disabled={busy} className="sticky-button w-full disabled:opacity-50">{busy ? "Working…" : mode === "login" ? "Enter dashboard →" : "Create my study account →"}</button>
