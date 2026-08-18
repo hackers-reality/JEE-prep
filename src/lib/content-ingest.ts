@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { createClient } from "@libsql/client";
 import { ensureDatabaseSchema } from "@/lib/database";
 
+export type VerificationStatus = "AI_DRAFT" | "NEEDS_REVIEW" | "REFERENCE_VERIFIED" | "VERIFIED_OFFICIAL";
+
 export type IngestProblem = {
   title: string;
   subject: "PHYSICS" | "CHEMISTRY" | "MATHEMATICS";
@@ -14,8 +16,12 @@ export type IngestProblem = {
   correctAnswer: string;
   explanation: string;
   source: string;
+  sourceUrl?: string;
   sourceYear?: number;
   sourceSession?: string;
+  sourcePaper?: string;
+  sourceShift?: string;
+  verificationStatus?: VerificationStatus;
   expectedSeconds?: number;
 };
 
@@ -37,8 +43,12 @@ export function validateIngestProblem(problem: IngestProblem): string[] {
   if (!problem.source.trim()) errors.push("source is required");
   if (!Number.isInteger(problem.difficulty) || problem.difficulty < 1 || problem.difficulty > 10) errors.push("difficulty must be an integer from 1 to 10");
   if ((problem.type === "MCQ" || problem.type === "MULTI_SELECT") && (!problem.options || problem.options.length < 2)) errors.push("choice problems need at least two options");
+  if (problem.sourceUrl) {
+    try { new URL(problem.sourceUrl); } catch { errors.push("sourceUrl must be a valid URL"); }
+  }
   if (problem.sourceYear != null && (!Number.isInteger(problem.sourceYear) || problem.sourceYear < 2000 || problem.sourceYear > new Date().getFullYear())) errors.push("sourceYear is invalid");
   if (problem.expectedSeconds != null && (!Number.isInteger(problem.expectedSeconds) || problem.expectedSeconds < 10)) errors.push("expectedSeconds must be at least 10 seconds");
+  if (problem.exam !== "PRACTICE" && problem.verificationStatus === "VERIFIED_OFFICIAL" && !problem.sourceUrl) errors.push("officially verified problems require sourceUrl");
   return errors;
 }
 
@@ -47,19 +57,31 @@ export async function ingestProblems(problems: IngestProblem[]): Promise<IngestR
   const client = db();
   const result: IngestResult = { inserted: 0, skipped: 0, errors: [] };
   try {
+    // Backwards-compatible migration for databases created before provenance fields existed.
+    for (const statement of [
+      `ALTER TABLE "Problem" ADD COLUMN "sourceUrl" TEXT`,
+      `ALTER TABLE "Problem" ADD COLUMN "sourcePaper" TEXT`,
+      `ALTER TABLE "Problem" ADD COLUMN "sourceShift" TEXT`,
+      `ALTER TABLE "Problem" ADD COLUMN "verificationStatus" TEXT NOT NULL DEFAULT 'NEEDS_REVIEW'`,
+    ]) {
+      try { await client.execute(statement); } catch (error) {
+        if (!String(error).toLowerCase().includes("duplicate column")) throw error;
+      }
+    }
+
     for (const problem of problems) {
       const errors = validateIngestProblem(problem);
       if (errors.length) { result.errors.push(`${problem.title || "untitled"}: ${errors.join(", ")}`); continue; }
       const topic = await client.execute({ sql: `SELECT "id" FROM "Topic" WHERE "id" = ? LIMIT 1`, args: [problem.topicId] });
       if (!topic.rows.length) { result.errors.push(`${problem.title}: topic ${problem.topicId} does not exist`); continue; }
       const existing = await client.execute({
-        sql: `SELECT "id" FROM "Problem" WHERE "source" = ? AND COALESCE("sourceYear",0) = COALESCE(?,0) AND COALESCE("sourceSession",'') = COALESCE(?, '') AND "statement" = ? LIMIT 1`,
-        args: [problem.source, problem.sourceYear ?? null, problem.sourceSession ?? null, problem.statement],
+        sql: `SELECT "id" FROM "Problem" WHERE "source" = ? AND COALESCE("sourceYear",0) = COALESCE(?,0) AND COALESCE("sourceSession",'') = COALESCE(?, '') AND COALESCE("sourcePaper",'') = COALESCE(?, '') AND COALESCE("sourceShift",'') = COALESCE(?, '') AND "statement" = ? LIMIT 1`,
+        args: [problem.source, problem.sourceYear ?? null, problem.sourceSession ?? null, problem.sourcePaper ?? null, problem.sourceShift ?? null, problem.statement],
       });
       if (existing.rows.length) { result.skipped += 1; continue; }
       await client.execute({
-        sql: `INSERT INTO "Problem" ("id","title","subject","topicId","exam","type","difficulty","statement","options","correctAnswer","explanation","source","sourceYear","sourceSession","expectedSeconds") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        args: [randomUUID(), problem.title, problem.subject, problem.topicId, problem.exam, problem.type, problem.difficulty, problem.statement, JSON.stringify(problem.options ?? []), problem.correctAnswer, problem.explanation, problem.source, problem.sourceYear ?? null, problem.sourceSession ?? null, problem.expectedSeconds ?? 120],
+        sql: `INSERT INTO "Problem" ("id","title","subject","topicId","exam","type","difficulty","statement","options","correctAnswer","explanation","source","sourceUrl","sourceYear","sourceSession","sourcePaper","sourceShift","verificationStatus","expectedSeconds") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        args: [randomUUID(), problem.title, problem.subject, problem.topicId, problem.exam, problem.type, problem.difficulty, problem.statement, JSON.stringify(problem.options ?? []), problem.correctAnswer, problem.explanation, problem.source, problem.sourceUrl ?? null, problem.sourceYear ?? null, problem.sourceSession ?? null, problem.sourcePaper ?? null, problem.sourceShift ?? null, problem.verificationStatus ?? "NEEDS_REVIEW", problem.expectedSeconds ?? 120],
       });
       result.inserted += 1;
     }
