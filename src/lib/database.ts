@@ -19,8 +19,10 @@ const SCHEMA_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS "TopicMastery" ("id" TEXT NOT NULL PRIMARY KEY, "studentId" TEXT NOT NULL, "topicId" TEXT NOT NULL, "questionsSeen" INTEGER NOT NULL DEFAULT 0, "questionsCorrect" INTEGER NOT NULL DEFAULT 0, "lastUpdated" DATETIME NOT NULL, CONSTRAINT "TopicMastery_studentId_fkey" FOREIGN KEY ("studentId") REFERENCES "Student" ("id") ON DELETE RESTRICT ON UPDATE CASCADE, CONSTRAINT "TopicMastery_topicId_fkey" FOREIGN KEY ("topicId") REFERENCES "Topic" ("id") ON DELETE RESTRICT ON UPDATE CASCADE)`,
   `CREATE TABLE IF NOT EXISTS "DiscussionPost" ("id" TEXT NOT NULL PRIMARY KEY, "studentId" TEXT NOT NULL, "topicId" TEXT, "subject" TEXT, "title" TEXT NOT NULL, "body" TEXT NOT NULL, "imageUrl" TEXT, "category" TEXT NOT NULL DEFAULT 'GENERAL', "isResolved" BOOLEAN NOT NULL DEFAULT false, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL, CONSTRAINT "DiscussionPost_studentId_fkey" FOREIGN KEY ("studentId") REFERENCES "Student" ("id") ON DELETE RESTRICT ON UPDATE CASCADE, CONSTRAINT "DiscussionPost_topicId_fkey" FOREIGN KEY ("topicId") REFERENCES "Topic" ("id") ON DELETE SET NULL ON UPDATE CASCADE)`,
   `CREATE TABLE IF NOT EXISTS "DiscussionComment" ("id" TEXT NOT NULL PRIMARY KEY, "postId" TEXT NOT NULL, "studentId" TEXT NOT NULL, "body" TEXT NOT NULL, "isBest" BOOLEAN NOT NULL DEFAULT false, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL, CONSTRAINT "DiscussionComment_postId_fkey" FOREIGN KEY ("postId") REFERENCES "DiscussionPost" ("id") ON DELETE CASCADE ON UPDATE CASCADE, CONSTRAINT "DiscussionComment_studentId_fkey" FOREIGN KEY ("studentId") REFERENCES "Student" ("id") ON DELETE RESTRICT ON UPDATE CASCADE)`,
-  `CREATE TABLE IF NOT EXISTS "DiscussionVote" ("id" TEXT NOT NULL PRIMARY KEY, "postId" TEXT NOT NULL, "studentId" TEXT NOT NULL, "value" INTEGER NOT NULL DEFAULT 1, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "DiscussionVote_postId_fkey" FOREIGN KEY ("postId") REFERENCES "DiscussionPost" ("id") ON DELETE CASCADE ON UPDATE CASCADE, CONSTRAINT "DiscussionVote_studentId_fkey" FOREIGN KEY ("studentId") REFERENCES "Student" ("id") ON DELETE RESTRICT ON UPDATE CASCADE)`,
-  `CREATE TABLE IF NOT EXISTS "DiscussionBookmark" ("id" TEXT NOT NULL PRIMARY KEY, "postId" TEXT NOT NULL, "studentId" TEXT NOT NULL, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "DiscussionBookmark_postId_fkey" FOREIGN KEY ("postId") REFERENCES "DiscussionPost" ("id") ON DELETE CASCADE ON UPDATE CASCADE, CONSTRAINT "DiscussionBookmark_studentId_fkey" FOREIGN KEY ("studentId") REFERENCES "Student" ("id") ON DELETE RESTRICT ON UPDATE CASCADE)`,
+  `CREATE TABLE IF NOT EXISTS "DiscussionVote" ("id" TEXT NOT NULL PRIMARY KEY, "postId" TEXT NOT NULL, "studentId" TEXT NOT NULL, "value" INTEGER NOT NULL DEFAULT 1, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "DiscussionVote_postId_fkey" FOREIGN KEY ("postId") REFERENCES "DiscussionPost" ("id") ON DELETE CASCADE ON UPDATE CASCADE)`,
+  `CREATE TABLE IF NOT EXISTS "DiscussionBookmark" ("id" TEXT NOT NULL PRIMARY KEY, "postId" TEXT NOT NULL, "studentId" TEXT NOT NULL, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "DiscussionBookmark_postId_fkey" FOREIGN KEY ("postId") REFERENCES "DiscussionPost" ("id") ON DELETE CASCADE ON UPDATE CASCADE)`,
+  `CREATE TABLE IF NOT EXISTS "Problem" ("id" TEXT NOT NULL PRIMARY KEY, "title" TEXT NOT NULL, "subject" TEXT NOT NULL, "topicId" TEXT, "exam" TEXT NOT NULL DEFAULT 'PRACTICE', "type" TEXT NOT NULL DEFAULT 'MCQ', "difficulty" INTEGER NOT NULL DEFAULT 5, "statement" TEXT NOT NULL, "options" TEXT NOT NULL DEFAULT '[]', "correctAnswer" TEXT NOT NULL, "explanation" TEXT NOT NULL, "source" TEXT, "sourceYear" INTEGER, "sourceSession" TEXT, "expectedSeconds" INTEGER NOT NULL DEFAULT 120, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+  `CREATE TABLE IF NOT EXISTS "ProblemAttempt" ("id" TEXT NOT NULL PRIMARY KEY, "problemId" TEXT NOT NULL, "studentId" TEXT NOT NULL, "answer" TEXT, "isCorrect" BOOLEAN, "timeSeconds" INTEGER NOT NULL DEFAULT 0, "confidence" INTEGER, "mistakeType" TEXT, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "ProblemAttempt_problemId_fkey" FOREIGN KEY ("problemId") REFERENCES "Problem" ("id") ON DELETE CASCADE, CONSTRAINT "ProblemAttempt_studentId_fkey" FOREIGN KEY ("studentId") REFERENCES "Student" ("id") ON DELETE CASCADE)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "Subject_name_key" ON "Subject"("name")`,
   `CREATE INDEX IF NOT EXISTS "Book_subjectId_classLevel_idx" ON "Book"("subjectId", "classLevel")`,
   `CREATE INDEX IF NOT EXISTS "Chapter_bookId_idx" ON "Chapter"("bookId")`,
@@ -47,6 +49,10 @@ const SCHEMA_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "DiscussionVote_postId_idx" ON "DiscussionVote"("postId")`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "DiscussionBookmark_postId_studentId_key" ON "DiscussionBookmark"("postId", "studentId")`,
   `CREATE INDEX IF NOT EXISTS "DiscussionBookmark_studentId_createdAt_idx" ON "DiscussionBookmark"("studentId", "createdAt")`,
+  `CREATE INDEX IF NOT EXISTS "Problem_subject_exam_difficulty_idx" ON "Problem"("subject", "exam", "difficulty")`,
+  `CREATE INDEX IF NOT EXISTS "Problem_topicId_idx" ON "Problem"("topicId")`,
+  `CREATE INDEX IF NOT EXISTS "ProblemAttempt_student_problem_idx" ON "ProblemAttempt"("studentId", "problemId")`,
+  `CREATE INDEX IF NOT EXISTS "ProblemAttempt_student_created_idx" ON "ProblemAttempt"("studentId", "createdAt")`,
 ];
 
 let schemaPromise: Promise<void> | null = null;
@@ -59,13 +65,10 @@ function getDatabaseClient() {
 
 export function ensureDatabaseSchema(): Promise<void> {
   if (schemaPromise) return schemaPromise;
-
   schemaPromise = (async () => {
     const client = getDatabaseClient();
     try {
-      for (const sql of SCHEMA_STATEMENTS) {
-        await client.execute(sql);
-      }
+      for (const sql of SCHEMA_STATEMENTS) await client.execute(sql);
     } finally {
       client.close();
     }
@@ -73,6 +76,5 @@ export function ensureDatabaseSchema(): Promise<void> {
     schemaPromise = null;
     throw error;
   });
-
   return schemaPromise;
 }
