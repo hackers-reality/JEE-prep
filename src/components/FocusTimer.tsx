@@ -9,11 +9,27 @@ export default function FocusTimer() {
   const [secondsLeft, setSecondsLeft] = useState(50 * 60);
   const [running, setRunning] = useState(false);
   const [sessions, setSessions] = useState(0);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     const saved = Number(localStorage.getItem("jee-focus-sessions") ?? 0);
     if (Number.isFinite(saved)) setSessions(saved);
   }, []);
+
+  async function completeSession(duration: number) {
+    setSaving(true);
+    try {
+      await fetch("/api/study-session", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ durationMinutes: duration, sessionType: "FOCUS" }),
+      });
+    } catch {
+      // Keep the local counter useful even if the network is unavailable.
+    } finally {
+      setSaving(false);
+    }
+  }
 
   useEffect(() => {
     if (!running) return;
@@ -26,6 +42,7 @@ export default function FocusTimer() {
             localStorage.setItem("jee-focus-sessions", String(next));
             return next;
           });
+          void completeSession(minutes);
           return minutes * 60;
         }
         return value - 1;
@@ -50,7 +67,7 @@ export default function FocusTimer() {
     <div className="paper-card p-5">
       <div className="flex items-start justify-between gap-3">
         <div><p className="text-xs uppercase tracking-widest opacity-50">Focus mode</p><h2 className="font-hand text-2xl font-bold">One clean session</h2></div>
-        <span className="text-xs opacity-55">{sessions} completed</span>
+        <span className="text-xs opacity-55">{sessions} completed{saving ? " • saving…" : ""}</span>
       </div>
       <div className="text-center py-5">
         <div className="font-mono text-5xl font-bold tracking-tight">{display}</div>
