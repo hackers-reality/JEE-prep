@@ -3,8 +3,8 @@ import { registerAccount, SESSION_COOKIE } from "@/lib/auth";
 
 export async function POST(request: Request) {
   try {
-    const { name, email, password } = await request.json();
-    const session = await registerAccount(String(name ?? ""), String(email ?? ""), String(password ?? ""));
+    const { name, username, password } = await request.json();
+    const session = await registerAccount(String(name ?? ""), String(username ?? ""), String(password ?? ""));
     const response = NextResponse.json({ ok: true });
     response.cookies.set(SESSION_COOKIE, session.token, {
       httpOnly: true,
