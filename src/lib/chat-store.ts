@@ -1,34 +1,21 @@
-const KEYS = {
-  MODEL: "jee-prep-nvidia-model",
-  CHAT_PREFIX: "jee-prep-chat-",
-};
+import { AI_MODELS, DEFAULT_AI_MODEL } from "./ai-models";
 
-export const AVAILABLE_MODELS = [
-  { id: "nvidia/llama-3.3-nemotron-super-49b-v1", name: "Nemotron Super 49B", tier: "balanced" },
-  { id: "meta/llama-3.1-405b-instruct", name: "Llama 3.1 405B", tier: "deep" },
-  { id: "meta/llama-3.1-70b-instruct", name: "Llama 3.1 70B", tier: "fast" },
-  { id: "meta/llama-3.1-8b-instruct", name: "Llama 3.1 8B", tier: "quick" },
-  { id: "mistralai/mistral-7b-instruct", name: "Mistral 7B", tier: "quick" },
-  { id: "deepseek-ai/deepseek-r1", name: "DeepSeek R1", tier: "reasoning" },
-] as const;
+const KEYS = { MODEL: "jee-prep-ai-model", CHAT_PREFIX: "jee-prep-chat-" };
 
-export function getApiKey(): string {
-  return "";
-}
+export const AVAILABLE_MODELS = AI_MODELS;
 
-export function setApiKey(_key: string) {
-  // Provider credentials must remain server-side. Kept as a no-op for
-  // backwards compatibility with the settings UI until that UI is migrated.
-}
+/** Provider credentials never live in browser storage. */
+export function getApiKey(): string { return ""; }
+export function setApiKey(_key: string) { /* server-side credentials only */ }
 
 export function getSelectedModel(): string {
-  if (typeof window === "undefined") return AVAILABLE_MODELS[0].id;
+  if (typeof window === "undefined") return DEFAULT_AI_MODEL;
   const stored = localStorage.getItem(KEYS.MODEL);
-  return AVAILABLE_MODELS.some((model) => model.id === stored) ? stored! : AVAILABLE_MODELS[0].id;
+  return AI_MODELS.some((model) => model.id === stored) ? stored! : DEFAULT_AI_MODEL;
 }
 
 export function setSelectedModel(model: string) {
-  if (AVAILABLE_MODELS.some((item) => item.id === model)) localStorage.setItem(KEYS.MODEL, model);
+  if (AI_MODELS.some((candidate) => candidate.id === model)) localStorage.setItem(KEYS.MODEL, model);
 }
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
