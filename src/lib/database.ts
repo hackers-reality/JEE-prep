@@ -17,6 +17,10 @@ const SCHEMA_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS "MockQuestionTopic" ("mockQuestionId" TEXT NOT NULL, "topicId" TEXT NOT NULL, PRIMARY KEY ("mockQuestionId", "topicId"), CONSTRAINT "MockQuestionTopic_mockQuestionId_fkey" FOREIGN KEY ("mockQuestionId") REFERENCES "MockQuestion" ("id") ON DELETE RESTRICT ON UPDATE CASCADE, CONSTRAINT "MockQuestionTopic_topicId_fkey" FOREIGN KEY ("topicId") REFERENCES "Topic" ("id") ON DELETE RESTRICT ON UPDATE CASCADE)`,
   `CREATE TABLE IF NOT EXISTS "MockTestResult" ("id" TEXT NOT NULL PRIMARY KEY, "mockTestId" TEXT NOT NULL, "totalQuestions" INTEGER NOT NULL, "correctCount" INTEGER NOT NULL, "incorrectCount" INTEGER NOT NULL, "subjectBreakdown" TEXT NOT NULL, "weakTopicIds" TEXT NOT NULL, "strongTopicIds" TEXT NOT NULL, "focusNextTopicIds" TEXT NOT NULL, "computedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "MockTestResult_mockTestId_fkey" FOREIGN KEY ("mockTestId") REFERENCES "MockTest" ("id") ON DELETE RESTRICT ON UPDATE CASCADE)`,
   `CREATE TABLE IF NOT EXISTS "TopicMastery" ("id" TEXT NOT NULL PRIMARY KEY, "studentId" TEXT NOT NULL, "topicId" TEXT NOT NULL, "questionsSeen" INTEGER NOT NULL DEFAULT 0, "questionsCorrect" INTEGER NOT NULL DEFAULT 0, "lastUpdated" DATETIME NOT NULL, CONSTRAINT "TopicMastery_studentId_fkey" FOREIGN KEY ("studentId") REFERENCES "Student" ("id") ON DELETE RESTRICT ON UPDATE CASCADE, CONSTRAINT "TopicMastery_topicId_fkey" FOREIGN KEY ("topicId") REFERENCES "Topic" ("id") ON DELETE RESTRICT ON UPDATE CASCADE)`,
+  `CREATE TABLE IF NOT EXISTS "DiscussionPost" ("id" TEXT NOT NULL PRIMARY KEY, "studentId" TEXT NOT NULL, "topicId" TEXT, "subject" TEXT, "title" TEXT NOT NULL, "body" TEXT NOT NULL, "imageUrl" TEXT, "category" TEXT NOT NULL DEFAULT 'GENERAL', "isResolved" BOOLEAN NOT NULL DEFAULT false, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL, CONSTRAINT "DiscussionPost_studentId_fkey" FOREIGN KEY ("studentId") REFERENCES "Student" ("id") ON DELETE RESTRICT ON UPDATE CASCADE, CONSTRAINT "DiscussionPost_topicId_fkey" FOREIGN KEY ("topicId") REFERENCES "Topic" ("id") ON DELETE SET NULL ON UPDATE CASCADE)`,
+  `CREATE TABLE IF NOT EXISTS "DiscussionComment" ("id" TEXT NOT NULL PRIMARY KEY, "postId" TEXT NOT NULL, "studentId" TEXT NOT NULL, "body" TEXT NOT NULL, "isBest" BOOLEAN NOT NULL DEFAULT false, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL, CONSTRAINT "DiscussionComment_postId_fkey" FOREIGN KEY ("postId") REFERENCES "DiscussionPost" ("id") ON DELETE CASCADE ON UPDATE CASCADE, CONSTRAINT "DiscussionComment_studentId_fkey" FOREIGN KEY ("studentId") REFERENCES "Student" ("id") ON DELETE RESTRICT ON UPDATE CASCADE)`,
+  `CREATE TABLE IF NOT EXISTS "DiscussionVote" ("id" TEXT NOT NULL PRIMARY KEY, "postId" TEXT NOT NULL, "studentId" TEXT NOT NULL, "value" INTEGER NOT NULL DEFAULT 1, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "DiscussionVote_postId_fkey" FOREIGN KEY ("postId") REFERENCES "DiscussionPost" ("id") ON DELETE CASCADE ON UPDATE CASCADE, CONSTRAINT "DiscussionVote_studentId_fkey" FOREIGN KEY ("studentId") REFERENCES "Student" ("id") ON DELETE RESTRICT ON UPDATE CASCADE)`,
+  `CREATE TABLE IF NOT EXISTS "DiscussionBookmark" ("id" TEXT NOT NULL PRIMARY KEY, "postId" TEXT NOT NULL, "studentId" TEXT NOT NULL, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "DiscussionBookmark_postId_fkey" FOREIGN KEY ("postId") REFERENCES "DiscussionPost" ("id") ON DELETE CASCADE ON UPDATE CASCADE, CONSTRAINT "DiscussionBookmark_studentId_fkey" FOREIGN KEY ("studentId") REFERENCES "Student" ("id") ON DELETE RESTRICT ON UPDATE CASCADE)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "Subject_name_key" ON "Subject"("name")`,
   `CREATE INDEX IF NOT EXISTS "Book_subjectId_classLevel_idx" ON "Book"("subjectId", "classLevel")`,
   `CREATE INDEX IF NOT EXISTS "Chapter_bookId_idx" ON "Chapter"("bookId")`,
@@ -33,6 +37,16 @@ const SCHEMA_STATEMENTS = [
   `CREATE UNIQUE INDEX IF NOT EXISTS "MockTestResult_mockTestId_key" ON "MockTestResult"("mockTestId")`,
   `CREATE INDEX IF NOT EXISTS "TopicMastery_studentId_idx" ON "TopicMastery"("studentId")`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "TopicMastery_studentId_topicId_key" ON "TopicMastery"("studentId", "topicId")`,
+  `CREATE INDEX IF NOT EXISTS "DiscussionPost_createdAt_idx" ON "DiscussionPost"("createdAt")`,
+  `CREATE INDEX IF NOT EXISTS "DiscussionPost_subject_createdAt_idx" ON "DiscussionPost"("subject", "createdAt")`,
+  `CREATE INDEX IF NOT EXISTS "DiscussionPost_topicId_createdAt_idx" ON "DiscussionPost"("topicId", "createdAt")`,
+  `CREATE INDEX IF NOT EXISTS "DiscussionPost_studentId_createdAt_idx" ON "DiscussionPost"("studentId", "createdAt")`,
+  `CREATE INDEX IF NOT EXISTS "DiscussionComment_postId_createdAt_idx" ON "DiscussionComment"("postId", "createdAt")`,
+  `CREATE INDEX IF NOT EXISTS "DiscussionComment_studentId_createdAt_idx" ON "DiscussionComment"("studentId", "createdAt")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "DiscussionVote_postId_studentId_key" ON "DiscussionVote"("postId", "studentId")`,
+  `CREATE INDEX IF NOT EXISTS "DiscussionVote_postId_idx" ON "DiscussionVote"("postId")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "DiscussionBookmark_postId_studentId_key" ON "DiscussionBookmark"("postId", "studentId")`,
+  `CREATE INDEX IF NOT EXISTS "DiscussionBookmark_studentId_createdAt_idx" ON "DiscussionBookmark"("studentId", "createdAt")`,
 ];
 
 let schemaPromise: Promise<void> | null = null;
