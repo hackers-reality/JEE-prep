@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { ensureDatabaseSchema } from "./database";
 import { main as seedBase } from "../../prisma/seed";
 import { seedPhysics } from "../../prisma/seed-physics";
 import { seedChemistry } from "../../prisma/seed-chemistry";
@@ -19,14 +20,17 @@ export async function checkAndSeed(): Promise<boolean> {
   if (seedComplete) return true;
   if (seeding) return false;
 
-  const topicCount = await prisma.topic.count();
-  if (topicCount > 0) {
-    seedComplete = true;
-    return true;
-  }
-
   seeding = true;
   try {
+    await ensureDatabaseSchema();
+
+    const topicCount = await prisma.topic.count();
+    if (topicCount > 0) {
+      seedComplete = true;
+      seeding = false;
+      return true;
+    }
+
     await seedBase(prisma);
     await seedPhysics(prisma);
     await seedChemistry(prisma);
