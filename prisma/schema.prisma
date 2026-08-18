@@ -156,6 +156,7 @@ model Student {
   nvidiaNimKeyServerSynced String?
   mockTests               MockTest[]
   topicMastery            TopicMastery[]
+  studySessions            StudySession[]
   createdAt               DateTime      @default(now())
   updatedAt               DateTime      @updatedAt
 }
@@ -168,6 +169,19 @@ model SelfRating {
   level     SelfRatedLevel
 
   @@unique([studentId, subject])
+}
+
+model StudySession {
+  id              String   @id @default(cuid())
+  student         Student  @relation(fields: [studentId], references: [id])
+  studentId       String
+  startedAt       DateTime
+  endedAt         DateTime
+  durationMinutes Int
+  sessionType     String   @default("FOCUS")
+  createdAt       DateTime @default(now())
+
+  @@index([studentId, startedAt])
 }
 
 enum MockTestType {
