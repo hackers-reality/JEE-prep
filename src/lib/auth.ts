@@ -16,7 +16,17 @@ function db() {
 async function ensureAuthSchema() {
   const client = db();
   try {
-    await client.execute(`CREATE TABLE IF NOT EXISTS "Account" ("id" TEXT NOT NULL PRIMARY KEY, "studentId" TEXT NOT NULL UNIQUE, "email" TEXT NOT NULL UNIQUE, "passwordHash" TEXT NOT NULL, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "Account_studentId_fkey" FOREIGN KEY ("studentId") REFERENCES "Student" ("id") ON DELETE CASCADE ON UPDATE CASCADE)`);
+    await client.execute(`CREATE TABLE IF NOT EXISTS "Account" ("id" TEXT NOT NULL PRIMARY KEY, "studentId" TEXT NOT NULL UNIQUE, "username" TEXT NOT NULL UNIQUE, "email" TEXT, "passwordHash" TEXT NOT NULL, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "Account_studentId_fkey" FOREIGN KEY ("studentId") REFERENCES "Student" ("id") ON DELETE CASCADE ON UPDATE CASCADE)`);
+    // Migrate the earlier email-based Account table without requiring a manual DB migration.
+    const columns = await client.execute(`PRAGMA table_info("Account")`);
+    const columnNames = new Set(columns.rows.map((row) => String(row.name ?? "")));
+    if (!columnNames.has("username")) {
+      await client.execute(`ALTER TABLE "Account" ADD COLUMN "username" TEXT`);
+    }
+    // Give any pre-existing email accounts a deterministic username before adding
+    // the unique index. New accounts never rely on email for authentication.
+    await client.execute(`UPDATE "Account" SET username = CASE WHEN username IS NOT NULL AND TRIM(username) <> '' THEN username ELSE LOWER(REPLACE(SUBSTR(email, 1, INSTR(email, '@') - 1), ' ', '_')) END WHERE username IS NULL OR TRIM(username) = ''`);
+    await client.execute(`CREATE UNIQUE INDEX IF NOT EXISTS "Account_username_key" ON "Account"("username")`);
     await client.execute(`CREATE TABLE IF NOT EXISTS "AuthSession" ("id" TEXT NOT NULL PRIMARY KEY, "accountId" TEXT NOT NULL, "tokenHash" TEXT NOT NULL UNIQUE, "expiresAt" DATETIME NOT NULL, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "AuthSession_accountId_fkey" FOREIGN KEY ("accountId") REFERENCES "Account" ("id") ON DELETE CASCADE ON UPDATE CASCADE)`);
     await client.execute(`CREATE INDEX IF NOT EXISTS "AuthSession_accountId_expiresAt_idx" ON "AuthSession"("accountId", "expiresAt")`);
   } finally {
@@ -24,8 +34,14 @@ async function ensureAuthSchema() {
   }
 }
 
-function normalizeEmail(email: string) {
-  return email.trim().toLowerCase();
+function normalizeUsername(username: string) {
+  return username.trim().toLowerCase();
+}
+
+function validateUsername(username: string) {
+  if (!/^[a-z0-9_]{3,24}$/.test(username)) {
+    throw new Error("Username must be 3–24 characters using letters, numbers, or underscores.");
+  }
 }
 
 function hashPassword(password: string) {
@@ -46,28 +62,26 @@ function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 
-export async function registerAccount(name: string, email: string, password: string) {
+export async function registerAccount(name: string, username: string, password: string) {
   await ensureDatabaseSchema();
   await ensureAuthSchema();
-  const normalizedEmail = normalizeEmail(email);
-  if (!normalizedEmail || !normalizedEmail.includes("@")) throw new Error("Enter a valid email address.");
+  const normalizedUsername = normalizeUsername(username);
+  validateUsername(normalizedUsername);
   if (password.length < 8) throw new Error("Password must be at least 8 characters.");
 
   const existingClient = db();
-  let exists = false;
   try {
-    const existing = await existingClient.execute({ sql: `SELECT id FROM "Account" WHERE email = ? LIMIT 1`, args: [normalizedEmail] });
-    exists = existing.rows.length > 0;
+    const existing = await existingClient.execute({ sql: `SELECT id FROM "Account" WHERE username = ? LIMIT 1`, args: [normalizedUsername] });
+    if (existing.rows.length > 0) throw new Error("That username is already taken.");
   } finally {
     existingClient.close();
   }
-  if (exists) throw new Error("An account with that email already exists.");
 
-  const student = await prisma.student.create({ data: { name: name.trim() || "Student" } });
+  const student = await prisma.student.create({ data: { name: name.trim() || normalizedUsername } });
   const accountId = crypto.randomUUID();
   const client = db();
   try {
-    await client.execute({ sql: `INSERT INTO "Account" (id, studentId, email, passwordHash) VALUES (?, ?, ?, ?)`, args: [accountId, student.id, normalizedEmail, hashPassword(password)] });
+    await client.execute({ sql: `INSERT INTO "Account" (id, studentId, username, passwordHash) VALUES (?, ?, ?, ?)`, args: [accountId, student.id, normalizedUsername, hashPassword(password)] });
   } catch (error) {
     await prisma.student.delete({ where: { id: student.id } }).catch(() => undefined);
     throw error;
@@ -77,14 +91,14 @@ export async function registerAccount(name: string, email: string, password: str
   return createSession(accountId);
 }
 
-export async function loginAccount(email: string, password: string) {
+export async function loginAccount(username: string, password: string) {
   await ensureDatabaseSchema();
   await ensureAuthSchema();
   const client = db();
   try {
-    const result = await client.execute({ sql: `SELECT id, passwordHash FROM "Account" WHERE email = ? LIMIT 1`, args: [normalizeEmail(email)] });
+    const result = await client.execute({ sql: `SELECT id, passwordHash FROM "Account" WHERE username = ? LIMIT 1`, args: [normalizeUsername(username)] });
     const account = result.rows[0] as { id?: string; passwordHash?: string } | undefined;
-    if (!account?.id || !account.passwordHash || !verifyPassword(password, account.passwordHash)) throw new Error("Invalid email or password.");
+    if (!account?.id || !account.passwordHash || !verifyPassword(password, account.passwordHash)) throw new Error("Invalid username or password.");
     return createSession(account.id);
   } finally {
     client.close();
