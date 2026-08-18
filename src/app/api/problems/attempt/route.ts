@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { ensureProblemSchema, recordProblemAttempt } from "@/lib/problem-engine";
-import { getAuthenticatedStudent } from "@/lib/auth";
+import { getCurrentStudent } from "@/lib/auth";
 
 export async function POST(request: Request) {
-  const student = await getAuthenticatedStudent();
+  const student = await getCurrentStudent();
   if (!student) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json();
