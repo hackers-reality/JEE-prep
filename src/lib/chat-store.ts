@@ -1,12 +1,19 @@
 import { AI_MODELS, DEFAULT_AI_MODEL } from "./ai-models";
 
-const KEYS = { MODEL: "jee-prep-ai-model", CHAT_PREFIX: "jee-prep-chat-" };
-
+const KEYS = { API_KEY: "jee-prep-nvidia-api-key", MODEL: "jee-prep-ai-model", CHAT_PREFIX: "jee-prep-chat-" };
 export const AVAILABLE_MODELS = AI_MODELS;
 
-/** Provider credentials never live in browser storage. */
-export function getApiKey(): string { return ""; }
-export function setApiKey(_key: string) { /* server-side credentials only */ }
+export function getApiKey(): string {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem(KEYS.API_KEY) || "";
+}
+
+export function setApiKey(key: string) {
+  if (typeof window === "undefined") return;
+  const value = key.trim();
+  if (value) localStorage.setItem(KEYS.API_KEY, value);
+  else localStorage.removeItem(KEYS.API_KEY);
+}
 
 export function getSelectedModel(): string {
   if (typeof window === "undefined") return DEFAULT_AI_MODEL;
@@ -35,5 +42,5 @@ export function saveChatMessage(topicId: string, message: ChatMessage) {
 }
 
 export function clearChatHistory(topicId: string) {
-  localStorage.removeItem(`${KEYS.CHAT_PREFIX}${topicId}`);
+  if (typeof window !== "undefined") localStorage.removeItem(`${KEYS.CHAT_PREFIX}${topicId}`);
 }
