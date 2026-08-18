@@ -20,11 +20,12 @@ export default function RegularMockTestPage() {
 
   useEffect(() => {
     fetch("/api/student")
-      .then((r) => r.json())
-      .then((s) => {
-        if (!s?.id) { router.push("/onboarding"); return; }
-        setStudentId(s.id);
-      });
+      .then(async (r) => {
+        if (!r.ok) throw new Error("Authentication required");
+        return r.json();
+      })
+      .then((s) => { if (s?.id) setStudentId(s.id); else router.push("/login"); })
+      .catch(() => router.push("/login"));
   }, [router]);
 
   useEffect(() => {
@@ -34,14 +35,8 @@ export default function RegularMockTestPage() {
       .then((existingTests: TestInfo[]) => {
         const regular = existingTests.filter((t) => t.type === "REGULAR");
         if (regular.length > 0) {
-          return Promise.all(
-            regular.map((t: { id: string }) =>
-              fetch(`/api/mock-test/${t.id}`).then((r) => r.json())
-            )
-          ).then((full) => {
-            setAllTests(full);
-            setLoading(false);
-          });
+          return Promise.all(regular.map((t) => fetch(`/api/mock-test/${t.id}`).then((r) => r.json())))
+            .then((full) => { setAllTests(full); setLoading(false); });
         }
         setLoading(false);
       })
@@ -51,109 +46,24 @@ export default function RegularMockTestPage() {
   async function createNewTest() {
     if (!studentId) return;
     setCreating(true);
-    const res = await fetch("/api/mock-test/regular/create", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ studentId }),
-    });
+    const res = await fetch("/api/mock-test/regular/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ studentId }) });
     const data = await res.json();
-    if (data?.test) {
-      setAllTests((prev) => [data.test, ...prev]);
-    }
+    if (data?.test) setAllTests((prev) => [data.test, ...prev]);
     setCreating(false);
   }
 
-  if (loading) {
-    return (
-      <main className="max-w-2xl mx-auto p-6 text-center" style={{ color: "var(--ink)" }}>
-        <p className="text-lg">Loading...</p>
-      </main>
-    );
-  }
+  if (loading) return <main className="max-w-2xl mx-auto p-6 text-center" style={{ color: "var(--ink)" }}><p className="text-lg">Loading...</p></main>;
 
   return (
     <main className="max-w-2xl mx-auto p-6">
-      <h1 className="font-hand text-3xl font-bold mb-2 text-center" style={{ color: "var(--ink)" }}>
-        Practice Tests
-      </h1>
-      <p className="text-sm text-center opacity-70 mb-8" style={{ color: "var(--ink)" }}>
-        Full-syllabus mock tests with questions from all subjects.
-      </p>
-
-      <div className="text-center mb-8">
-        <button
-          onClick={createNewTest}
-          disabled={creating}
-          className="px-6 py-3 text-sm font-bold rounded-lg transition-all"
-          style={{
-            backgroundColor: "var(--sticky-blue)",
-            color: "var(--ink)",
-            opacity: creating ? 0.6 : 1,
-          }}
-        >
-          {creating ? "Creating..." : "Start New Practice Test"}
-        </button>
-      </div>
-
+      <h1 className="font-hand text-3xl font-bold mb-2 text-center" style={{ color: "var(--ink)" }}>Practice Tests</h1>
+      <p className="text-sm text-center opacity-70 mb-8" style={{ color: "var(--ink)" }}>Full-syllabus mock tests with questions from all subjects.</p>
+      <div className="text-center mb-8"><button onClick={createNewTest} disabled={creating} className="px-6 py-3 text-sm font-bold rounded-lg transition-all" style={{ backgroundColor: "var(--sticky-blue)", color: "var(--ink)", opacity: creating ? 0.6 : 1 }}>{creating ? "Creating..." : "Start New Practice Test"}</button></div>
       <div className="space-y-4">
-        {allTests.length === 0 && (
-          <p className="text-center text-sm opacity-60" style={{ color: "var(--ink)" }}>
-            No practice tests yet. Click the button above to begin.
-          </p>
-        )}
-        {allTests.map((test) => {
-          const done = !!test.takenAt;
-          return (
-            <div
-              key={test.id}
-              className="rounded-lg p-5 shadow-md transition-all"
-              style={{
-                backgroundColor: done ? "var(--sticky-green)" : "var(--sticky-yellow)",
-                opacity: done ? 0.8 : 1,
-                color: "var(--ink)",
-              }}
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="font-hand text-lg font-bold">Practice Test</h2>
-                  <p className="text-xs opacity-70">
-                    {test.questions.length} questions | {done ? "Completed" : "Not taken"}
-                  </p>
-                </div>
-                {done ? (
-                  <button
-                    onClick={() => {
-                      if (test.result?.id) router.push(`/mock-test/results/${test.result.id}`);
-                    }}
-                    className="px-4 py-2 text-sm font-bold rounded-lg"
-                    style={{ backgroundColor: "var(--sticky-blue)", color: "var(--ink)" }}
-                  >
-                    View Results
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => router.push(`/mock-test/${test.id}`)}
-                    className="px-4 py-2 text-sm font-bold rounded-lg"
-                    style={{ backgroundColor: "var(--sticky-blue)", color: "var(--ink)" }}
-                  >
-                    Start Test
-                  </button>
-                )}
-              </div>
-            </div>
-          );
-        })}
+        {allTests.length === 0 && <p className="text-center text-sm opacity-60" style={{ color: "var(--ink)" }}>No practice tests yet. Click the button above to begin.</p>}
+        {allTests.map((test) => { const done = !!test.takenAt; return <div key={test.id} className="rounded-lg p-5 shadow-md transition-all" style={{ backgroundColor: done ? "var(--sticky-green)" : "var(--sticky-yellow)", opacity: done ? 0.8 : 1, color: "var(--ink)" }}><div className="flex items-center justify-between"><div><h2 className="font-hand text-lg font-bold">Practice Test</h2><p className="text-xs opacity-70">{test.questions.length} questions | {done ? "Completed" : "Not taken"}</p></div>{done ? <button onClick={() => { if (test.result?.id) router.push(`/mock-test/results/${test.result.id}`); }} className="px-4 py-2 text-sm font-bold rounded-lg" style={{ backgroundColor: "var(--sticky-blue)", color: "var(--ink)" }}>View Results</button> : <button onClick={() => router.push(`/mock-test/${test.id}`)} className="px-4 py-2 text-sm font-bold rounded-lg" style={{ backgroundColor: "var(--sticky-blue)", color: "var(--ink)" }}>Start Test</button>}</div></div>; })}
       </div>
-
-      <div className="mt-10 text-center">
-        <button
-          onClick={() => router.push("/mock-test/diagnostic")}
-          className="px-4 py-2 text-sm font-bold rounded-lg"
-          style={{ backgroundColor: "var(--sticky-pink)", color: "var(--ink)" }}
-        >
-          Back to Diagnostic Hub
-        </button>
-      </div>
+      <div className="mt-10 text-center"><button onClick={() => router.push("/dashboard")} className="px-4 py-2 text-sm font-bold rounded-lg" style={{ backgroundColor: "var(--sticky-pink)", color: "var(--ink)" }}>Back to Dashboard</button></div>
     </main>
   );
 }
