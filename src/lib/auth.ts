@@ -53,8 +53,15 @@ export async function registerAccount(name: string, email: string, password: str
   if (!normalizedEmail || !normalizedEmail.includes("@")) throw new Error("Enter a valid email address.");
   if (password.length < 8) throw new Error("Password must be at least 8 characters.");
 
-  const existing = await db().execute({ sql: `SELECT id FROM "Account" WHERE email = ? LIMIT 1`, args: [normalizedEmail] });
-  if (existing.rows.length) throw new Error("An account with that email already exists.");
+  const existingClient = db();
+  let exists = false;
+  try {
+    const existing = await existingClient.execute({ sql: `SELECT id FROM "Account" WHERE email = ? LIMIT 1`, args: [normalizedEmail] });
+    exists = existing.rows.length > 0;
+  } finally {
+    existingClient.close();
+  }
+  if (exists) throw new Error("An account with that email already exists.");
 
   const student = await prisma.student.create({ data: { name: name.trim() || "Student" } });
   const accountId = crypto.randomUUID();
