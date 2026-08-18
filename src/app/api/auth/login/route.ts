@@ -3,8 +3,8 @@ import { loginAccount, SESSION_COOKIE } from "@/lib/auth";
 
 export async function POST(request: Request) {
   try {
-    const { email, password } = await request.json();
-    const session = await loginAccount(String(email ?? ""), String(password ?? ""));
+    const { username, password } = await request.json();
+    const session = await loginAccount(String(username ?? ""), String(password ?? ""));
     const response = NextResponse.json({ ok: true });
     response.cookies.set(SESSION_COOKIE, session.token, {
       httpOnly: true,
