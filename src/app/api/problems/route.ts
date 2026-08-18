@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { ensureProblemSchema } from "@/lib/problem-engine";
 import { createClient } from "@libsql/client";
-import { getAuthenticatedStudent } from "@/lib/auth";
+import { getCurrentStudent } from "@/lib/auth";
 
 function client() {
   const url = process.env.TURSO_DATABASE_URL ?? process.env.DATABASE_URL ?? "file:./prisma/dev.db";
@@ -10,7 +10,7 @@ function client() {
 }
 
 export async function GET(request: Request) {
-  const student = await getAuthenticatedStudent();
+  const student = await getCurrentStudent();
   if (!student) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   await ensureProblemSchema();
