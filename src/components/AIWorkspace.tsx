@@ -5,7 +5,7 @@ import { AIConversationSidebar } from "./AIConversationSidebar";
 import MarkdownContent from "./MarkdownContent";
 import { loadSavedConversation } from "@/lib/ai-conversations-client";
 import { getApiKey, getSelectedModel, type ChatMessage } from "@/lib/chat-store";
-import { JEE_TUTOR_SYSTEM_PROMPT } from "@/lib/jee-tutor-prompt";
+import { buildJeeSystemPrompt } from "@/lib/jee-chat";
 
 export function AIWorkspace() {
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -36,16 +36,20 @@ export function AIWorkspace() {
         if (!created.ok) throw new Error("Sign in to save AI conversations.");
         conversationId = (await created.json()).conversation.id; setActiveId(conversationId);
       }
-      await fetch(`/api/chat/conversations/${conversationId}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(user) });
-      const next = [...messages, user]; setMessages(next); setStatus("Analyzing…");
-      const response = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ apiKey, model: getSelectedModel(), messages: [{ role: "system", content: JEE_TUTOR_SYSTEM_PROMPT }, ...next] }) });
+      const next = [...messages, user];
+      setMessages(next);
+      const saveUser = await fetch(`/api/chat/conversations/${conversationId}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(user) });
+      if (!saveUser.ok) throw new Error("Could not save your message.");
+      setStatus("Analyzing JEE problem…");
+      const response = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ apiKey, model: getSelectedModel(), messages: [{ role: "system", content: buildJeeSystemPrompt() }, ...next] }) });
       if (!response.ok || !response.body) { const error = await response.json().catch(() => ({})); throw new Error(error.error || `AI error: ${response.status}`); }
       const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ""; let reply = "";
-      setMessages([...next, { role: "assistant", content: "" }]); setStatus("Writing…");
+      setMessages([...next, { role: "assistant", content: "" }]); setStatus("Writing JEE-focused response…");
       while (true) { const { value, done } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); const lines = buffer.split("\n"); buffer = lines.pop() ?? ""; for (const line of lines) { if (!line.startsWith("data:")) continue; const payload = line.slice(5).trim(); if (!payload || payload === "[DONE]") continue; try { const chunk = JSON.parse(payload); const delta = chunk.choices?.[0]?.delta?.content; if (typeof delta === "string") { reply += delta; setMessages([...next, { role: "assistant", content: reply }]); } } catch {} } }
       const assistant = { role: "assistant" as const, content: reply || "The model returned an empty response. Try again." };
       setMessages([...next, assistant]);
-      await fetch(`/api/chat/conversations/${conversationId}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(assistant) });
+      const saveAssistant = await fetch(`/api/chat/conversations/${conversationId}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(assistant) });
+      if (!saveAssistant.ok) throw new Error("The response was generated but could not be saved.");
       setStatus("Saved");
     } catch (error) { setStatus(error instanceof Error ? error.message : "AI request failed."); setMessages((prev) => [...prev, { role: "assistant", content: `**AI error:** ${error instanceof Error ? error.message : "Request failed."}` }]); }
     finally { setLoading(false); }
