@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { AIConversationSidebar } from "./AIConversationSidebar";
 import MarkdownContent from "./MarkdownContent";
 import { loadSavedConversation } from "@/lib/ai-conversations-client";
 import { getApiKey, getSelectedModel, type ChatMessage } from "@/lib/chat-store";
+import { JEE_TUTOR_SYSTEM_PROMPT } from "@/lib/jee-tutor-prompt";
 
 export function AIWorkspace() {
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -37,7 +38,7 @@ export function AIWorkspace() {
       }
       await fetch(`/api/chat/conversations/${conversationId}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(user) });
       const next = [...messages, user]; setMessages(next); setStatus("Analyzing…");
-      const response = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ apiKey, model: getSelectedModel(), messages: next }) });
+      const response = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ apiKey, model: getSelectedModel(), messages: [{ role: "system", content: JEE_TUTOR_SYSTEM_PROMPT }, ...next] }) });
       if (!response.ok || !response.body) { const error = await response.json().catch(() => ({})); throw new Error(error.error || `AI error: ${response.status}`); }
       const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ""; let reply = "";
       setMessages([...next, { role: "assistant", content: "" }]); setStatus("Writing…");
