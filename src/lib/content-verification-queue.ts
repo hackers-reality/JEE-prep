@@ -21,10 +21,10 @@ export function nextVerificationStage(stage: VerificationStage): VerificationSta
 export function buildVerificationQueue(records: VerificationRecord[]): VerificationQueueItem[] {
   return records
     .filter((record) => record.stage !== "VERIFIED" && record.stage !== "RETIRED" && record.stage !== "REJECTED")
-    .map((record) => ({
+    .map<VerificationQueueItem>((record) => ({
       ...record,
       priority:
         record.stage === "JEE_REVIEWED" || record.stage === "HUMAN_APPROVED" ? "HIGH" : "NORMAL",
     }))
-    .sort((a, b) => Number(a.priority === "HIGH") - Number(b.priority === "HIGH"));
+    .sort((a, b) => Number(b.priority === "HIGH") - Number(a.priority === "HIGH"));
 }
