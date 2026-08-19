@@ -22,7 +22,7 @@ const TOPIC_ALIASES: Record<string, string> = {
   mechanics: "mechanics",
   thermodynamics: "thermodynamics",
   electrostatics: "electrostatics",
-  current electricity: "current electricity",
+  "current electricity": "current electricity",
   rotation: "rotational motion",
   "rotational motion": "rotational motion",
   mole: "mole concept",
