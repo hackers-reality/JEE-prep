@@ -4,10 +4,12 @@ import { ensureStudySchema, currentStudentId } from "@/lib/student-study";
 
 function db() { const url = process.env.TURSO_DATABASE_URL ?? process.env.DATABASE_URL ?? "file:./prisma/dev.db"; const authToken = process.env.TURSO_AUTH_TOKEN; return createClient({ url, ...(authToken ? { authToken } : {}) }); }
 
+type SqlArg = string | number | null;
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   await ensureStudySchema(); const studentId = await currentStudentId(); if (!studentId) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
   const { taskId } = await params; const body = await req.json().catch(() => ({}));
-  const fields: string[] = []; const args: unknown[] = [];
+  const fields: string[] = []; const args: SqlArg[] = [];
   if (typeof body.title === "string" && body.title.trim()) { fields.push("title = ?"); args.push(body.title.trim().slice(0,160)); }
   if (typeof body.description === "string") { fields.push("description = ?"); args.push(body.description.slice(0,1000)); }
   if (typeof body.dueAt === "string" || body.dueAt === null) { fields.push("dueAt = ?"); args.push(body.dueAt); }
