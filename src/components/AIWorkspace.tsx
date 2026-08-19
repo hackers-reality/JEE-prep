@@ -2,25 +2,60 @@
 
 import { useEffect, useState } from "react";
 import { AIConversationSidebar } from "./AIConversationSidebar";
+import MarkdownContent from "./MarkdownContent";
 import { loadSavedConversation } from "@/lib/ai-conversations-client";
+import { getApiKey, getSelectedModel, type ChatMessage } from "@/lib/chat-store";
 
 export function AIWorkspace() {
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Array<{ role: string; content: string }>>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState("Ready");
 
   async function selectConversation(id: string) {
     setActiveId(id); setLoading(true);
-    try { const data = await loadSavedConversation(id); setMessages(data.messages ?? []); }
+    try { const data = await loadSavedConversation(id); setMessages((data.messages ?? []).filter((m: ChatMessage) => m.role === "user" || m.role === "assistant")); }
+    catch (error) { setStatus(error instanceof Error ? error.message : "Could not load conversation."); }
     finally { setLoading(false); }
   }
 
-  function newConversation() { setActiveId(null); setMessages([]); }
+  function newConversation() { setActiveId(null); setMessages([]); setInput(""); setStatus("Ready"); }
+
+  async function send() {
+    const content = input.trim(); if (!content || loading) return;
+    const apiKey = getApiKey();
+    if (!apiKey) { setStatus("Add your NVIDIA key in Settings first."); return; }
+    setLoading(true); setStatus("Starting…"); setInput("");
+    const user = { role: "user" as const, content };
+    let conversationId = activeId;
+    try {
+      if (!conversationId) {
+        const created = await fetch("/api/chat/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: content.slice(0, 60), model: getSelectedModel() }) });
+        if (!created.ok) throw new Error("Sign in to save AI conversations.");
+        conversationId = (await created.json()).conversation.id; setActiveId(conversationId);
+      }
+      await fetch(`/api/chat/conversations/${conversationId}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(user) });
+      const next = [...messages, user]; setMessages(next); setStatus("Analyzing…");
+      const response = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ apiKey, model: getSelectedModel(), messages: next }) });
+      if (!response.ok || !response.body) { const error = await response.json().catch(() => ({})); throw new Error(error.error || `AI error: ${response.status}`); }
+      const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ""; let reply = "";
+      setMessages([...next, { role: "assistant", content: "" }]); setStatus("Writing…");
+      while (true) { const { value, done } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); const lines = buffer.split("\n"); buffer = lines.pop() ?? ""; for (const line of lines) { if (!line.startsWith("data:")) continue; const payload = line.slice(5).trim(); if (!payload || payload === "[DONE]") continue; try { const chunk = JSON.parse(payload); const delta = chunk.choices?.[0]?.delta?.content; if (typeof delta === "string") { reply += delta; setMessages([...next, { role: "assistant", content: reply }]); } } catch {} } }
+      const assistant = { role: "assistant" as const, content: reply || "The model returned an empty response. Try again." };
+      setMessages([...next, assistant]);
+      await fetch(`/api/chat/conversations/${conversationId}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(assistant) });
+      setStatus("Saved");
+    } catch (error) { setStatus(error instanceof Error ? error.message : "AI request failed."); setMessages((prev) => [...prev, { role: "assistant", content: `**AI error:** ${error instanceof Error ? error.message : "Request failed."}` }]); }
+    finally { setLoading(false); }
+  }
 
   return <div className="flex flex-col md:flex-row gap-4 min-h-[620px]">
     <AIConversationSidebar activeId={activeId} onSelect={selectConversation} onNew={newConversation} />
-    <section className="flex-1 rounded-xl border p-5" style={{ borderColor: "var(--grid-line)", backgroundColor: "var(--paper-bg)" }}>
-      {activeId ? <><div className="mb-4"><div className="text-xs uppercase tracking-widest opacity-50">Saved conversation</div><h2 className="font-hand text-2xl font-bold">Continue studying</h2></div>{loading ? <p className="text-sm opacity-60">Loading messages…</p> : <div className="space-y-3">{messages.length ? messages.map((message, index) => <div key={index} className="rounded-lg p-3 text-sm" style={{ backgroundColor: message.role === "user" ? "var(--sticky-blue)" : "var(--sticky-green)" }}>{message.content}</div>) : <p className="text-sm opacity-60">This conversation has no messages yet.</p>}</div>}<p className="mt-6 text-xs opacity-50">Topic-specific tutor chat can be continued here next.</p></> : <div className="h-full min-h-[520px] grid place-items-center text-center"><div><div className="font-hand text-3xl font-bold">Start a new JEE conversation</div><p className="text-sm opacity-60 mt-2">Choose an existing chat or start a fresh one. Your conversations belong to your student account.</p></div></div>}
+    <section className="flex-1 rounded-xl border flex flex-col overflow-hidden" style={{ borderColor: "var(--grid-line)", backgroundColor: "var(--paper-bg)" }}>
+      <div className="px-5 py-4 border-b" style={{ borderColor: "var(--grid-line)" }}><div className="text-xs uppercase tracking-widest opacity-50">JEE AI workspace</div><div className="flex items-center justify-between"><h2 className="font-hand text-2xl font-bold">{activeId ? "Continue studying" : "New JEE conversation"}</h2><span className="text-xs opacity-60">{status}</span></div></div>
+      <div className="flex-1 overflow-y-auto p-5 space-y-3">{!messages.length ? <div className="h-full min-h-[420px] grid place-items-center text-center"><div><div className="font-hand text-3xl font-bold">Ask the JEE Tutor</div><p className="text-sm opacity-60 mt-2">Doubts, solution checks, concepts and problem solving.</p></div></div> : messages.map((message, index) => <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}><div className="max-w-[88%] rounded-lg p-3 text-sm" style={{ backgroundColor: message.role === "user" ? "var(--sticky-blue)" : "var(--sticky-green)" }}>{message.role === "assistant" ? <MarkdownContent content={message.content} /> : message.content}</div></div>)}{loading && <div className="text-xs opacity-60">{status}</div>}</div>
+      <div className="p-3 border-t" style={{ borderColor: "var(--grid-line)" }}><div className="flex gap-2"><textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }} disabled={loading} rows={2} placeholder="Ask your JEE doubt…" className="flex-1 rounded border px-3 py-2 text-sm resize-none" /><button onClick={send} disabled={loading || !input.trim()} className="self-end rounded px-4 py-2 text-sm font-bold" style={{ backgroundColor: "var(--sticky-yellow)", color: "var(--ink)" }}>{loading ? "Working…" : "Send"}</button></div></div>
     </section>
   </div>;
 }
