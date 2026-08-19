@@ -21,8 +21,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <Link href="/dashboard" className="hover:underline" style={{ color: "var(--ink)" }}>Dashboard</Link>
             <Link href="/problems" className="hover:underline font-semibold" style={{ color: "var(--ink)" }}>Solve</Link>
             <Link href="/subjects" className="hover:underline" style={{ color: "var(--ink)" }}>Subjects</Link>
-            <Link href="/mock-test/diagnostic" className="hover:underline" style={{ color: "var(--ink)" }}>Diagnostic</Link>
-            <Link href="/mock-test/regular" className="hover:underline" style={{ color: "var(--ink)" }}>Tests</Link>
             <Link href="/chat" className="hover:underline" style={{ color: "var(--ink)" }}>AI</Link>
             <Link href="/settings" className="hover:underline" style={{ color: "var(--ink)" }}>Settings</Link>
           </nav>
