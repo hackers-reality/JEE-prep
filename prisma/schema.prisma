@@ -30,7 +30,7 @@ model Subject {
   id        String   @id @default(cuid())
   name      SubjectName @unique
   books     Book[]
-  createdAt DateTime  @default(now())
+  createdAt DateTime @default(now())
 }
 
 model Book {
@@ -54,7 +54,7 @@ model Chapter {
   bookId     String
   orderIndex Int
   topics     Topic[]
-  createdAt  DateTime  @default(now())
+  createdAt  DateTime @default(now())
 
   @@index([bookId])
 }
@@ -147,23 +147,22 @@ enum JeeTarget {
 }
 
 model Student {
-  id                       String              @id @default(cuid())
-  name                     String?
-  onboardingComplete       Boolean             @default(false)
-  prepStage                PrepStage?
-  jeeTarget                JeeTarget?
-  preferredDailyHours      Int?
-  nvidiaNimKeyServerSynced String?
-  selfRatings              SelfRating[]
-  mockTests                MockTest[]
-  topicMastery             TopicMastery[]
-  studySessions            StudySession[]
-  discussionPosts          DiscussionPost[]
-  discussionComments       DiscussionComment[]
-  discussionVotes          DiscussionVote[]
-  discussionBookmarks      DiscussionBookmark[]
-  createdAt                DateTime            @default(now())
-  updatedAt                DateTime            @updatedAt
+  id                 String              @id @default(cuid())
+  name               String?
+  onboardingComplete Boolean             @default(false)
+  prepStage          PrepStage?
+  jeeTarget          JeeTarget?
+  preferredDailyHours Int?
+  selfRatings        SelfRating[]
+  mockTests          MockTest[]
+  topicMastery       TopicMastery[]
+  studySessions      StudySession[]
+  discussionPosts    DiscussionPost[]
+  discussionComments DiscussionComment[]
+  discussionVotes    DiscussionVote[]
+  discussionBookmarks DiscussionBookmark[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
 }
 
 model SelfRating {
@@ -236,7 +235,7 @@ model MockQuestionTopic {
 model MockTestResult {
   id                String   @id @default(cuid())
   mockTest          MockTest @relation(fields: [mockTestId], references: [id])
-  mockTestId        String   @unique
+  mockTestId         String   @unique
   totalQuestions    Int
   correctCount      Int
   incorrectCount    Int
