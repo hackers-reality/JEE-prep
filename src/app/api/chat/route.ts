@@ -1,7 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
-import { AI_MODELS, DEFAULT_AI_MODEL, isAllowedAIModel } from "@/lib/ai-models";
+import { AI_MODELS, DEFAULT_AI_MODEL, isAllowedAIModel, modelSupports } from "@/lib/ai-models";
 
 const NVIDIA_API_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
+
+type TextPart = { type: "text"; text: string };
+type ImagePart = { type: "image_url"; image_url: { url: string } };
+type MessageContent = string | Array<TextPart | ImagePart>;
+
+function sanitizeContent(content: unknown): MessageContent | null {
+  if (typeof content === "string") return content.slice(0, 16000).trim() || null;
+  if (!Array.isArray(content)) return null;
+
+  const parts: Array<TextPart | ImagePart> = [];
+  for (const part of content.slice(0, 8)) {
+    if (!part || typeof part !== "object") continue;
+    const candidate = part as { type?: unknown; text?: unknown; image_url?: { url?: unknown } };
+    if (candidate.type === "text" && typeof candidate.text === "string") {
+      const text = candidate.text.slice(0, 16000).trim();
+      if (text) parts.push({ type: "text", text });
+    } else if (candidate.type === "image_url" && typeof candidate.image_url?.url === "string") {
+      const url = candidate.image_url.url.trim();
+      if (url.startsWith("data:image/") || /^https:\/\//.test(url)) parts.push({ type: "image_url", image_url: { url } });
+    }
+  }
+  return parts.length ? parts : null;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -15,14 +38,21 @@ export async function POST(req: NextRequest) {
     if (!messages.length) return NextResponse.json({ error: "At least one message is required." }, { status: 400 });
     if (messages.length > 30) return NextResponse.json({ error: "Conversation is too long. Start a fresh chat." }, { status: 413 });
 
-    const safeMessages = messages.map((message: unknown) => {
+    const safeMessages: Array<{ role: "user" | "assistant" | "system"; content: MessageContent }> = [];
+    let hasImage = false;
+    for (const message of messages) {
       const item = message as { role?: unknown; content?: unknown };
-      const role = item.role === "assistant" || item.role === "user" ? item.role : "user";
-      const content = typeof item.content === "string" ? item.content.slice(0, 16000) : "";
-      return { role, content };
-    }).filter((message: { content: string }) => message.content.trim().length > 0);
+      const role = item.role === "assistant" || item.role === "system" || item.role === "user" ? item.role : "user";
+      const content = sanitizeContent(item.content);
+      if (!content) continue;
+      if (Array.isArray(content)) hasImage ||= content.some((part) => part.type === "image_url");
+      safeMessages.push({ role, content });
+    }
 
     if (!safeMessages.length) return NextResponse.json({ error: "No usable message content." }, { status: 400 });
+    if (hasImage && !modelSupports(model, "vision")) {
+      return NextResponse.json({ error: "The selected model does not support image input. Choose a multimodal model such as Inkling, Kimi K2.6, MiniMax M3, or Nemotron Omni." }, { status: 400 });
+    }
 
     const res = await fetch(NVIDIA_API_URL, {
       method: "POST",
@@ -44,5 +74,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET() {
-  return NextResponse.json({ models: AI_MODELS.map(({ id, name, strengths }) => ({ id, name, strengths })) });
+  return NextResponse.json({
+    models: AI_MODELS.map(({ id, name, strengths, capabilities }) => ({ id, name, strengths, capabilities })),
+  });
 }
