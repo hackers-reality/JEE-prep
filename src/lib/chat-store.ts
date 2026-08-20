@@ -3,6 +3,10 @@ import { AI_MODELS, DEFAULT_AI_MODEL } from "./ai-models";
 const KEYS = { API_KEY: "jee-prep-nvidia-api-key", MODEL: "jee-prep-ai-model", CHAT_PREFIX: "jee-prep-chat-" };
 export const AVAILABLE_MODELS = AI_MODELS;
 
+export type TextPart = { type: "text"; text: string };
+export type ImagePart = { type: "image_url"; image_url: { url: string } };
+export type MessageContent = string | Array<TextPart | ImagePart>;
+
 export function getApiKey(): string {
   if (typeof window === "undefined") return "";
   return localStorage.getItem(KEYS.API_KEY) || "";
@@ -25,13 +29,15 @@ export function setSelectedModel(model: string) {
   if (AI_MODELS.some((candidate) => candidate.id === model)) localStorage.setItem(KEYS.MODEL, model);
 }
 
-export type ChatMessage = { role: "user" | "assistant"; content: string };
+export type ChatMessage = { role: "user" | "assistant"; content: MessageContent };
 
 export function getChatHistory(topicId: string): ChatMessage[] {
   if (typeof window === "undefined") return [];
   try {
     const data = localStorage.getItem(`${KEYS.CHAT_PREFIX}${topicId}`);
-    return data ? JSON.parse(data) : [];
+    if (!data) return [];
+    const parsed = JSON.parse(data);
+    return Array.isArray(parsed) ? parsed : [];
   } catch { return []; }
 }
 
