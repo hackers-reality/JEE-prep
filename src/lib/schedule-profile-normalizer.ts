@@ -18,6 +18,6 @@ export function toSchedulePlanningSnapshot(profile: StudentScheduleProfile): Sch
     preferredDailyHours: profile.studyPreferences.preferredDailyHours,
     fixedCommitments: profile.fixedCommitments,
     examFocus: profile.jeeTarget ?? null,
-    prepStage: profile.prepStage ?? null,
+    prepStage: profile.prepStage,
   };
 }
