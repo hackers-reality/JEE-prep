@@ -27,10 +27,19 @@ export type AggregatedWeakness = {
 
 const clamp = (value: number) => Math.max(0, Math.min(1, value));
 
+type WeaknessLabel = AggregatedWeakness["label"];
+
 function recencyWeight(occurredAt?: WeaknessEvent["occurredAt"]) {
   if (!occurredAt) return 0.75;
   const ageDays = Math.max(0, (Date.now() - new Date(occurredAt).getTime()) / 86_400_000);
   return Math.exp(-ageDays / 21);
+}
+
+function riskLabel(risk: number): WeaknessLabel {
+  if (risk >= 0.75) return "CRITICAL";
+  if (risk >= 0.55) return "HIGH";
+  if (risk >= 0.35) return "MODERATE";
+  return "LOW";
 }
 
 export function aggregateWeaknessEvents(events: WeaknessEvent[]): AggregatedWeakness[] {
@@ -55,7 +64,7 @@ export function aggregateWeaknessEvents(events: WeaknessEvent[]): AggregatedWeak
     const accuracyRisk = 1 - accuracy;
     const confidenceRisk = confidence == null ? 0.25 : clamp(confidence / 5);
     const risk = clamp(accuracyRisk * 0.4 + speedRisk * 0.25 + slowRate * 0.1 + mistakeRate * 0.15 + (1 - recentWeight) * 0.1 + confidenceRisk * 0.05);
-    const label = risk >= 0.75 ? "CRITICAL" : risk >= 0.55 ? "HIGH" : risk >= 0.35 ? "MODERATE" : "LOW";
+    const label = riskLabel(risk);
     return {
       topicId,
       subject: items.find((item) => item.subject)?.subject ?? null,
