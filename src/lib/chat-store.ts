@@ -25,6 +25,11 @@ export function getSelectedModel(): string {
   return AI_MODELS.some((model) => model.id === stored) ? stored! : DEFAULT_AI_MODEL;
 }
 
+/** Backwards-compatible model lookup used by the older tutor widget. */
+export function getAIModel(modelId: string) {
+  return AI_MODELS.find((model) => model.id === modelId);
+}
+
 export function setSelectedModel(model: string) {
   if (AI_MODELS.some((candidate) => candidate.id === model)) localStorage.setItem(KEYS.MODEL, model);
 }
