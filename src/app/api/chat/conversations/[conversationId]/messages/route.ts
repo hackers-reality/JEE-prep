@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@libsql/client";
 import { ensureAIConversationSchema, currentStudentId, newId } from "@/lib/ai-conversations";
 
-type StoredContent = string | Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }>;
+type MessagePart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
+type StoredContent = string | MessagePart[];
 
 function db() {
   const url = process.env.TURSO_DATABASE_URL ?? process.env.DATABASE_URL ?? "file:./prisma/dev.db";
@@ -13,7 +14,7 @@ function db() {
 function parseStoredContent(content: string): StoredContent {
   try {
     const parsed = JSON.parse(content);
-    if (Array.isArray(parsed)) return parsed as StoredContent;
+    if (Array.isArray(parsed)) return parsed as MessagePart[];
   } catch {}
   return content;
 }
@@ -21,20 +22,19 @@ function parseStoredContent(content: string): StoredContent {
 function normalizeIncomingContent(content: unknown): StoredContent | null {
   if (typeof content === "string") return content.trim().slice(0, 16000) || null;
   if (!Array.isArray(content)) return null;
-  const parts: StoredContent extends Array<infer T> ? T[] : never = [];
+  const parts: MessagePart[] = [];
   for (const part of content.slice(0, 8)) {
     if (!part || typeof part !== "object") continue;
     const candidate = part as { type?: unknown; text?: unknown; image_url?: { url?: unknown } };
     if (candidate.type === "text" && typeof candidate.text === "string") {
       const text = candidate.text.slice(0, 16000).trim();
-      if (text) (parts as Array<unknown>).push({ type: "text", text });
-    }
-    if (candidate.type === "image_url" && typeof candidate.image_url?.url === "string") {
+      if (text) parts.push({ type: "text", text });
+    } else if (candidate.type === "image_url" && typeof candidate.image_url?.url === "string") {
       const url = candidate.image_url.url.trim();
-      if (url.startsWith("data:image/") || /^https:\/\//.test(url)) (parts as Array<unknown>).push({ type: "image_url", image_url: { url } });
+      if (url.startsWith("data:image/") || /^https:\/\//.test(url)) parts.push({ type: "image_url", image_url: { url } });
     }
   }
-  return parts.length ? (parts as StoredContent) : null;
+  return parts.length ? parts : null;
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ conversationId: string }> }) {
