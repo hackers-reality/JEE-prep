@@ -24,7 +24,8 @@ function clamp(value: number) { return Math.max(0, Math.min(1, value)); }
 export function scoreWeakness(signal: PerformanceSignal): WeaknessScore {
   const speedRisk = clamp((signal.avgSeconds / Math.max(1, signal.expectedSeconds) - 1) / 1.5);
   const accuracyRisk = clamp(1 - signal.accuracy);
-  const confidenceRisk = signal.confidence == null ? 0.25 : clamp(signal.confidence / 5);
+  // Lower confidence should increase weakness risk. A confidence of 1/5 is riskier than 5/5.
+  const confidenceRisk = signal.confidence == null ? 0.25 : clamp(1 - signal.confidence / 5);
   const consistencyRisk = clamp(signal.repeatedMistakes / Math.max(1, signal.recentAttempts));
   const freshnessRisk = clamp(1 - Math.min(signal.recentAttempts / 8, 1));
   const overallRisk = clamp(
