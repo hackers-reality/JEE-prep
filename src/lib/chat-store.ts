@@ -1,4 +1,4 @@
-import { AI_MODELS, DEFAULT_AI_MODEL } from "./ai-models";
+import { AI_MODELS, DEFAULT_AI_MODEL, getAIModel as getRegisteredAIModel } from "./ai-models";
 
 const KEYS = { API_KEY: "jee-prep-nvidia-api-key", MODEL: "jee-prep-ai-model", CHAT_PREFIX: "jee-prep-chat-" };
 export const AVAILABLE_MODELS = AI_MODELS;
@@ -27,6 +27,10 @@ export function getSelectedModel(): string {
 
 export function setSelectedModel(model: string) {
   if (AI_MODELS.some((candidate) => candidate.id === model)) localStorage.setItem(KEYS.MODEL, model);
+}
+
+export function getAIModel(model: string) {
+  return getRegisteredAIModel(model);
 }
 
 export type ChatMessage = { role: "user" | "assistant"; content: MessageContent };
