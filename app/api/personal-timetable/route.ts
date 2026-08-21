@@ -1,33 +1,7 @@
 import { NextResponse } from "next/server";
-import { randomBytes } from "node:crypto";
 import { createClient } from "@libsql/client";
-import { getCurrentStudent } from "@/lib/auth";
 import { ensureDatabaseSchema } from "@/lib/database";
-
-export type TimetableVisibility = "private" | "parent_teacher" | "anyone_with_link";
-
-function db() {
-  const url = process.env.TURSO_DATABASE_URL ?? process.env.DATABASE_URL ?? "file:./prisma/dev.db";
-  const authToken = process.env.TURSO_AUTH_TOKEN;
-  return createClient({ url, ...(authToken ? { authToken } : {}) });
-}
-
-async function ensureTable() {
-  await ensureDatabaseSchema();
-  const client = db();
-  try {
-    await client.execute(`CREATE TABLE IF NOT EXISTS "PersonalTimetable" ("studentId" TEXT NOT NULL PRIMARY KEY, "payload" TEXT NOT NULL, "shareToken" TEXT NOT NULL UNIQUE, "visibility" TEXT NOT NULL DEFAULT 'private', "shareExpiresAt" DATETIME, "shareRevokedAt" DATETIME, "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "PersonalTimetable_studentId_fkey" FOREIGN KEY ("studentId") REFERENCES "Student" ("id") ON DELETE CASCADE)`);
-    const columns = await client.execute(`PRAGMA table_info("PersonalTimetable")`);
-    const names = new Set(columns.rows.map((row) => String(row.name ?? "")));
-    if (!names.has("visibility")) await client.execute(`ALTER TABLE "PersonalTimetable" ADD COLUMN "visibility" TEXT NOT NULL DEFAULT 'private'`);
-    if (!names.has("shareExpiresAt")) await client.execute(`ALTER TABLE "PersonalTimetable" ADD COLUMN "shareExpiresAt" DATETIME`);
-    if (!names.has("shareRevokedAt")) await client.execute(`ALTER TABLE "PersonalTimetable" ADD COLUMN "shareRevokedAt" DATETIME`);
-    await client.execute(`CREATE UNIQUE INDEX IF NOT EXISTS "PersonalTimetable_shareToken_key" ON "PersonalTimetable"("shareToken")`);
-    await client.execute(`CREATE INDEX IF NOT EXISTS "PersonalTimetable_visibility_idx" ON "PersonalTimetable"("visibility")`);
-  } finally {
-    client.close();
-  }
-}
+import { getPersonalAccess } from "@/lib/personal-access";
 
 export type PersonalPayload = {
   rows: unknown[];
@@ -43,15 +17,30 @@ const emptyPayload: PersonalPayload = {
   rows: [], logs: {}, syllabus: {}, gtDiary: [], doubts: [], bookProgress: {}, weeklyReviews: [],
 };
 
+function db() {
+  const url = process.env.TURSO_DATABASE_URL ?? process.env.DATABASE_URL;
+  if (!url) throw new Error("TURSO_DATABASE_URL is not configured.");
+  const authToken = process.env.TURSO_AUTH_TOKEN;
+  return createClient({ url, ...(authToken ? { authToken } : {}) });
+}
+
+async function ensureTable() {
+  await ensureDatabaseSchema();
+  const client = db();
+  try {
+    await client.execute(`CREATE TABLE IF NOT EXISTS "PersonalTimetableAccess" ("id" INTEGER NOT NULL PRIMARY KEY CHECK ("id" = 1), "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`);
+    await client.execute(`INSERT OR IGNORE INTO "PersonalTimetableAccess" ("id") VALUES (1)`);
+    await client.execute(`CREATE TABLE IF NOT EXISTS "PersonalTimetableData" ("id" INTEGER NOT NULL PRIMARY KEY CHECK ("id" = 1), "payload" TEXT NOT NULL, "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`);
+  } finally {
+    client.close();
+  }
+}
+
 function asObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
-function normalizeVisibility(value: unknown): TimetableVisibility {
-  return value === "parent_teacher" || value === "anyone_with_link" ? value : "private";
-}
-
-async function readPayload(payload: string | null | undefined): Promise<PersonalPayload> {
+function readPayload(payload: string | null | undefined): PersonalPayload {
   if (!payload) return emptyPayload;
   try {
     const parsed = asObject(JSON.parse(payload));
@@ -59,8 +48,8 @@ async function readPayload(payload: string | null | undefined): Promise<Personal
       rows: Array.isArray(parsed.rows) ? parsed.rows : [],
       logs: asObject(parsed.logs),
       syllabus: asObject(parsed.syllabus) as Record<string, string>,
-      gtDiary: Array.isArray(parsed.gtDiary) ? parsed.gtDiary : [],
-      doubts: Array.isArray(parsed.doubts) ? parsed.doubts : [],
+      gtDiary: [],
+      doubts: [],
       bookProgress: asObject(parsed.bookProgress),
       weeklyReviews: Array.isArray(parsed.weeklyReviews) ? parsed.weeklyReviews : [],
     };
@@ -74,85 +63,45 @@ function normalizePayload(body: Partial<PersonalPayload> & { rows?: unknown }): 
     rows: Array.isArray(body.rows) ? body.rows : [],
     logs: asObject(body.logs),
     syllabus: asObject(body.syllabus) as Record<string, string>,
-    gtDiary: Array.isArray(body.gtDiary) ? body.gtDiary : [],
-    doubts: Array.isArray(body.doubts) ? body.doubts : [],
+    gtDiary: [],
+    doubts: [],
     bookProgress: asObject(body.bookProgress),
     weeklyReviews: Array.isArray(body.weeklyReviews) ? body.weeklyReviews : [],
   };
 }
 
-export async function GET(request: Request) {
+export async function GET() {
   await ensureTable();
-  const url = new URL(request.url);
-  const share = url.searchParams.get("share");
+  const access = await getPersonalAccess();
+  if (!access.allowed) return NextResponse.json({ error: "Enter the owner password or continue as guest." }, { status: 401 });
   const client = db();
   try {
-    if (share) {
-      const result = await client.execute({ sql: `SELECT p.payload, p.updatedAt, p.visibility, p.shareExpiresAt, p.shareRevokedAt, s.name FROM "PersonalTimetable" p JOIN "Student" s ON s.id = p.studentId WHERE p.shareToken = ? LIMIT 1`, args: [share] });
-      const row = result.rows[0] as { payload?: string; updatedAt?: string; visibility?: string; shareExpiresAt?: string | null; shareRevokedAt?: string | null; name?: string } | undefined;
-      if (!row) return NextResponse.json({ error: "Share link not found." }, { status: 404 });
-      const visibility = normalizeVisibility(row.visibility);
-      if (visibility === "private") return NextResponse.json({ error: "This timetable is private." }, { status: 403 });
-      if (row.shareRevokedAt) return NextResponse.json({ error: "This share link has been revoked." }, { status: 410 });
-      if (row.shareExpiresAt && new Date(row.shareExpiresAt) <= new Date()) return NextResponse.json({ error: "This share link has expired." }, { status: 410 });
-      return NextResponse.json({ ok: true, mode: "viewer", visibility, payload: await readPayload(row.payload), updatedAt: row.updatedAt, studentName: row.name ?? "JEE 2028 student" });
-    }
-
-    const student = await getCurrentStudent();
-    if (!student) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
-    const result = await client.execute({ sql: `SELECT payload, shareToken, visibility, shareExpiresAt, shareRevokedAt, updatedAt FROM "PersonalTimetable" WHERE studentId = ? LIMIT 1`, args: [student.id] });
-    const row = result.rows[0] as { payload?: string; shareToken?: string; visibility?: string; shareExpiresAt?: string | null; shareRevokedAt?: string | null; updatedAt?: string } | undefined;
-    return NextResponse.json({ ok: true, mode: "owner", payload: await readPayload(row?.payload), shareToken: row?.shareToken ?? null, visibility: normalizeVisibility(row?.visibility), shareExpiresAt: row?.shareExpiresAt ?? null, shareRevokedAt: row?.shareRevokedAt ?? null, updatedAt: row?.updatedAt ?? null });
+    const result = await client.execute(`SELECT payload, updatedAt FROM "PersonalTimetableData" WHERE id = 1 LIMIT 1`);
+    const row = result.rows[0] as { payload?: string; updatedAt?: string } | undefined;
+    return NextResponse.json({ ok: true, mode: access.owner ? "owner" : "guest", readOnly: !access.owner, payload: readPayload(row?.payload), updatedAt: row?.updatedAt ?? null });
   } finally {
     client.close();
   }
 }
 
 export async function PUT(request: Request) {
-  const student = await getCurrentStudent();
-  if (!student) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
-  const body = (await request.json()) as Partial<PersonalPayload> & { rows?: unknown; visibility?: unknown; shareExpiresAt?: string | null; revokeShare?: boolean };
+  const access = await getPersonalAccess();
+  if (!access.owner) return NextResponse.json({ error: "Owner access required." }, { status: 403 });
+  const body = (await request.json()) as Partial<PersonalPayload> & { rows?: unknown };
   const payload = normalizePayload(body);
   await ensureTable();
   const client = db();
   try {
-    const existing = await client.execute({ sql: `SELECT shareToken, visibility, shareExpiresAt, shareRevokedAt FROM "PersonalTimetable" WHERE studentId = ? LIMIT 1`, args: [student.id] });
-    const old = existing.rows[0] as { shareToken?: string; visibility?: string; shareExpiresAt?: string | null; shareRevokedAt?: string | null } | undefined;
-    const shareToken = old?.shareToken ?? randomBytes(24).toString("base64url");
-    const visibility = body.visibility === undefined ? normalizeVisibility(old?.visibility) : normalizeVisibility(body.visibility);
-    const expiresAt = body.shareExpiresAt === undefined ? (old?.shareExpiresAt ?? null) : body.shareExpiresAt;
-    const revokedAt = body.revokeShare || visibility === "private" ? new Date().toISOString() : null;
     await client.execute({
-      sql: `INSERT INTO "PersonalTimetable" (studentId, payload, shareToken, visibility, shareExpiresAt, shareRevokedAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(studentId) DO UPDATE SET payload = excluded.payload, visibility = excluded.visibility, shareExpiresAt = excluded.shareExpiresAt, shareRevokedAt = excluded.shareRevokedAt, updatedAt = CURRENT_TIMESTAMP`,
-      args: [student.id, JSON.stringify(payload), shareToken, visibility, expiresAt, revokedAt],
+      sql: `INSERT INTO "PersonalTimetableData" (id, payload, updatedAt) VALUES (1, ?, CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET payload = excluded.payload, updatedAt = CURRENT_TIMESTAMP`,
+      args: [JSON.stringify(payload)],
     });
-    return NextResponse.json({ ok: true, shareToken, visibility, shareExpiresAt: expiresAt, shareRevokedAt: revokedAt, updatedAt: new Date().toISOString() });
+    return NextResponse.json({ ok: true, mode: "owner", updatedAt: new Date().toISOString() });
   } finally {
     client.close();
   }
 }
 
-export async function POST(request: Request) {
-  const student = await getCurrentStudent();
-  if (!student) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
-  const body = (await request.json().catch(() => ({}))) as { visibility?: unknown; expiresAt?: string | null; rotate?: boolean };
-  await ensureTable();
-  const client = db();
-  try {
-    const existing = await client.execute({ sql: `SELECT shareToken, payload, visibility, shareExpiresAt FROM "PersonalTimetable" WHERE studentId = ? LIMIT 1`, args: [student.id] });
-    const old = existing.rows[0] as { shareToken?: string; payload?: string; visibility?: string; shareExpiresAt?: string | null } | undefined;
-    const visibility = normalizeVisibility(body.visibility ?? (old?.visibility === "private" ? "parent_teacher" : old?.visibility));
-    const shareToken = !body.rotate && old?.shareToken ? old.shareToken : randomBytes(24).toString("base64url");
-    const payload = old?.payload ?? JSON.stringify(emptyPayload);
-    const expiresAt = body.expiresAt === undefined ? (old?.shareExpiresAt ?? null) : body.expiresAt;
-    await client.execute({
-      sql: `INSERT INTO "PersonalTimetable" (studentId, payload, shareToken, visibility, shareExpiresAt, shareRevokedAt, updatedAt) VALUES (?, ?, ?, ?, ?, NULL, CURRENT_TIMESTAMP)
-            ON CONFLICT(studentId) DO UPDATE SET shareToken = excluded.shareToken, visibility = excluded.visibility, shareExpiresAt = excluded.shareExpiresAt, shareRevokedAt = NULL, updatedAt = CURRENT_TIMESTAMP`,
-      args: [student.id, payload, shareToken, visibility, expiresAt],
-    });
-    return NextResponse.json({ ok: true, shareToken, visibility, shareExpiresAt: expiresAt });
-  } finally {
-    client.close();
-  }
+export async function POST() {
+  return NextResponse.json({ error: "Share-link generation is no longer used. Open the permanent personal timetable URL instead." }, { status: 410 });
 }
