@@ -113,15 +113,15 @@ export async function PUT(request: Request) {
   if (!student) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
   const body = (await request.json()) as Partial<PersonalPayload> & { rows?: unknown; visibility?: unknown; shareExpiresAt?: string | null; revokeShare?: boolean };
   const payload = normalizePayload(body);
-  const visibility = normalizeVisibility(body.visibility);
   await ensureTable();
   const client = db();
   try {
-    const existing = await client.execute({ sql: `SELECT shareToken, shareExpiresAt, shareRevokedAt FROM "PersonalTimetable" WHERE studentId = ? LIMIT 1`, args: [student.id] });
-    const old = existing.rows[0] as { shareToken?: string; shareExpiresAt?: string | null; shareRevokedAt?: string | null } | undefined;
+    const existing = await client.execute({ sql: `SELECT shareToken, visibility, shareExpiresAt, shareRevokedAt FROM "PersonalTimetable" WHERE studentId = ? LIMIT 1`, args: [student.id] });
+    const old = existing.rows[0] as { shareToken?: string; visibility?: string; shareExpiresAt?: string | null; shareRevokedAt?: string | null } | undefined;
     const shareToken = old?.shareToken ?? randomBytes(24).toString("base64url");
-    const expiresAt = body.shareExpiresAt === null ? null : (body.shareExpiresAt ?? old?.shareExpiresAt ?? null);
-    const revokedAt = body.revokeShare ? new Date().toISOString() : (visibility === "private" ? new Date().toISOString() : null);
+    const visibility = body.visibility === undefined ? normalizeVisibility(old?.visibility) : normalizeVisibility(body.visibility);
+    const expiresAt = body.shareExpiresAt === undefined ? (old?.shareExpiresAt ?? null) : body.shareExpiresAt;
+    const revokedAt = body.revokeShare || visibility === "private" ? new Date().toISOString() : null;
     await client.execute({
       sql: `INSERT INTO "PersonalTimetable" (studentId, payload, shareToken, visibility, shareExpiresAt, shareRevokedAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(studentId) DO UPDATE SET payload = excluded.payload, visibility = excluded.visibility, shareExpiresAt = excluded.shareExpiresAt, shareRevokedAt = excluded.shareRevokedAt, updatedAt = CURRENT_TIMESTAMP`,
@@ -137,12 +137,12 @@ export async function POST(request: Request) {
   const student = await getCurrentStudent();
   if (!student) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
   const body = (await request.json().catch(() => ({}))) as { visibility?: unknown; expiresAt?: string | null; rotate?: boolean };
-  const visibility = normalizeVisibility(body.visibility ?? "parent_teacher");
   await ensureTable();
   const client = db();
   try {
-    const existing = await client.execute({ sql: `SELECT shareToken, payload, shareExpiresAt FROM "PersonalTimetable" WHERE studentId = ? LIMIT 1`, args: [student.id] });
-    const old = existing.rows[0] as { shareToken?: string; payload?: string; shareExpiresAt?: string | null } | undefined;
+    const existing = await client.execute({ sql: `SELECT shareToken, payload, visibility, shareExpiresAt FROM "PersonalTimetable" WHERE studentId = ? LIMIT 1`, args: [student.id] });
+    const old = existing.rows[0] as { shareToken?: string; payload?: string; visibility?: string; shareExpiresAt?: string | null } | undefined;
+    const visibility = normalizeVisibility(body.visibility ?? (old?.visibility === "private" ? "parent_teacher" : old?.visibility));
     const shareToken = !body.rotate && old?.shareToken ? old.shareToken : randomBytes(24).toString("base64url");
     const payload = old?.payload ?? JSON.stringify(emptyPayload);
     const expiresAt = body.expiresAt === undefined ? (old?.shareExpiresAt ?? null) : body.expiresAt;
