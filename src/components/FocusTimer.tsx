@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 
 const PRESETS = [25, 50, 90];
 
+type StudySummary = { sessions?: unknown[] };
+
 export default function FocusTimer() {
   const [minutes, setMinutes] = useState(50);
   const [secondsLeft, setSecondsLeft] = useState(50 * 60);
@@ -11,21 +13,30 @@ export default function FocusTimer() {
   const [sessions, setSessions] = useState(0);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    const saved = Number(localStorage.getItem("jee-focus-sessions") ?? 0);
-    if (Number.isFinite(saved)) setSessions(saved);
-  }, []);
+  async function refreshSessions() {
+    try {
+      const response = await fetch("/api/study-session", { cache: "no-store" });
+      if (!response.ok) return;
+      const data = (await response.json()) as StudySummary;
+      setSessions(Array.isArray(data.sessions) ? data.sessions.length : 0);
+    } catch {
+      // The cloud value remains unchanged if the network is unavailable.
+    }
+  }
+
+  useEffect(() => { void refreshSessions(); }, []);
 
   async function completeSession(duration: number) {
     setSaving(true);
     try {
-      await fetch("/api/study-session", {
+      const response = await fetch("/api/study-session", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ durationMinutes: duration, sessionType: "FOCUS" }),
       });
+      if (response.ok) await refreshSessions();
     } catch {
-      // Keep the local counter useful even if the network is unavailable.
+      // Do not fabricate a completed cloud session when the network is unavailable.
     } finally {
       setSaving(false);
     }
@@ -37,11 +48,6 @@ export default function FocusTimer() {
       setSecondsLeft((value) => {
         if (value <= 1) {
           setRunning(false);
-          setSessions((current) => {
-            const next = current + 1;
-            localStorage.setItem("jee-focus-sessions", String(next));
-            return next;
-          });
           void completeSession(minutes);
           return minutes * 60;
         }
