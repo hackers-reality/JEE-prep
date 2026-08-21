@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@libsql/client";
 import { ensureStudySchema, currentStudentId, newStudyId } from "@/lib/student-study";
+import { getStudyDay } from "@/lib/study-day";
 
 function db() { const url = process.env.TURSO_DATABASE_URL ?? process.env.DATABASE_URL ?? "file:./prisma/dev.db"; const authToken = process.env.TURSO_AUTH_TOKEN; return createClient({ url, ...(authToken ? { authToken } : {}) }); }
 
 export async function GET(req: NextRequest) {
   await ensureStudySchema(); const studentId = await currentStudentId(); if (!studentId) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
-  const date = new URL(req.url).searchParams.get("date") || new Date().toISOString().slice(0, 10); const client = db();
+  const date = new URL(req.url).searchParams.get("date") || getStudyDay(); const client = db();
   try {
     const schedule = await client.execute({ sql: `SELECT id,scheduleDate,version,status,source,createdAt,updatedAt FROM "StudySchedule" WHERE studentId = ? AND scheduleDate = ? ORDER BY version DESC LIMIT 1`, args: [studentId, date] });
     if (!schedule.rows.length) return NextResponse.json({ schedule: null, blocks: [] });
@@ -17,7 +18,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   await ensureStudySchema(); const studentId = await currentStudentId(); if (!studentId) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
-  const body = await req.json().catch(() => ({})); const scheduleDate = typeof body.scheduleDate === "string" ? body.scheduleDate : new Date().toISOString().slice(0, 10); const rawBlocks = Array.isArray(body.blocks) ? body.blocks : [];
+  const body = await req.json().catch(() => ({})); const scheduleDate = typeof body.scheduleDate === "string" ? body.scheduleDate : getStudyDay(); const rawBlocks = Array.isArray(body.blocks) ? body.blocks : [];
   if (rawBlocks.length > 100) return NextResponse.json({ error: "Too many schedule blocks." }, { status: 400 });
   const client = db();
   try {
