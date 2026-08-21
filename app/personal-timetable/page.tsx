@@ -2,179 +2,373 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-type Row = {
-  day: string; time: string; slot: string; subject: string; topic: string; type: string;
-  target: number; done: number; hours: number;
-  status: "Planned" | "Done" | "Partial" | "Skipped"; notes: string;
+type Subject = "phy" | "chem" | "math";
+type Status = "done" | "progress" | "todo";
+
+type Log = {
+  q: Record<Subject, number>;
+  touched: Record<Subject, boolean>;
+  hrs: number;
+  notes: string;
+  savedAt?: string;
 };
 
-const week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-const template = [
-  ["11:00–11:30", "Wake / morning routine", "Other", "Wake, wash, breakfast, desk setup", "Routine", 0, 0, 0.5],
-  ["11:30–13:30", "Chemistry priority block", "Chemistry", "Atomic Structure — theory + worked examples", "Concept + notes", 15, 0, 2],
-  ["13:30–14:00", "Lunch / reset", "Other", "Lunch + short break", "Break", 0, 0, 0.5],
-  ["14:00–16:00", "Physics / Maths side-by-side", "Physics", "WEP — concepts, graphs, work-energy theorem", "Concept + Level 1", 15, 0, 2],
-  ["16:00–16:30", "Coaching prep / buffer", "Other", "Pack, travel/buffer, no heavy study", "Buffer", 0, 0, 0.5],
-  ["16:30–21:15", "Coaching", "Other", "Attend coaching; mark doubts and questions to revisit", "Coaching", 0, 0, 4.75],
-  ["21:15–22:00", "Dinner / reset", "Other", "Dinner, shower/reset, no doom-scrolling", "Reset", 0, 0, 0.75],
-  ["22:00–23:30", "Question-solving block", "Maths", "Level 1 external-book questions + coaching sheets", "Question solving", 20, 0, 1.5],
-  ["23:30–00:15", "Revision block", "Chemistry", "Active recall: Atomic Structure + Mole Concept maintenance", "Revision", 5, 0, 0.75],
-  ["00:15–01:15", "GT / mistake diary", "Other", "Wrong + unattempted GT questions; doubt list; reattempt", "GT analysis", 5, 0, 1],
-  ["01:15–02:30", "Night study block", "Physics", "H.C. Verma Level 1 / selected teacher-marked questions", "Question solving", 10, 0, 1.25],
-  ["02:30–03:15", "Wind down", "Other", "Plan tomorrow, light music, phone away", "Wind down", 0, 0, 0.75],
-  ["03:15–03:30", "Sleep prep", "Other", "Bed; target consistent sleep window", "Sleep prep", 0, 0, 0.25],
+type Row = {
+  day: string;
+  time: string;
+  title: string;
+  desc: string;
+  subject: Subject | "life";
+};
+
+const WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const EXAM_DATE = "2026-09-12T00:00:00+05:30";
+const DOUBT_DEADLINE = "2026-09-05T00:00:00+05:30";
+
+const SUBJECT_META: Record<Subject, { label: string; color: string; book: string }> = {
+  phy: { label: "Physics", color: "#3DDCFF", book: "H.C. Verma Level 1" },
+  chem: { label: "Chemistry", color: "#A78BFA", book: "N. Avasthi Level 1" },
+  math: { label: "Maths", color: "#FFB454", book: "Target Level 1" },
+};
+
+const SYLLABUS: Record<Subject, { topics: { name: string; status: Status; note: string }[] }> = {
+  phy: {
+    topics: [
+      { name: "Scalar & Vector", status: "done", note: "Completed — now revision + JEE application" },
+      { name: "Kinematics", status: "done", note: "Completed — mixed application practice" },
+      { name: "Laws of Motion", status: "progress", note: "Covered; strengthen friction, pulleys and connected-body application" },
+      { name: "Work, Energy & Power", status: "progress", note: "New priority — build from fundamentals to Level 1" },
+    ],
+  },
+  chem: {
+    topics: [
+      { name: "Mole Concept", status: "done", note: "Completed — maintenance + mixed numericals" },
+      { name: "Atomic Structure", status: "progress", note: "New priority — tuition + self-study + Level 1" },
+    ],
+  },
+  math: {
+    topics: [
+      { name: "Trigonometry", status: "done", note: "Completed — revision + problem recognition" },
+      { name: "Sets", status: "done", note: "Completed — revision + application" },
+      { name: "Relations & Functions", status: "done", note: "Completed — revision + application" },
+      { name: "Straight Line", status: "progress", note: "New — Target Level 1" },
+      { name: "Circle", status: "progress", note: "New — Target Level 1" },
+    ],
+  },
+};
+
+const DAILY_PLAN: { date: string; items?: { t: string; q: number; sub: Subject | "rev"; note?: string }[]; revision?: boolean; note?: string }[] = [
+  { date: "2026-08-21", items: [
+    { t: "Kinematics", q: 10, sub: "phy", note: "revision" },
+    { t: "Mole Concept + % Composition", q: 10, sub: "chem", note: "revision" },
+    { t: "WEP", q: 8, sub: "phy", note: "new topic — self-study" },
+    { t: "Trigonometry", q: 12, sub: "math", note: "revision" },
+  ] },
+  { date: "2026-08-22", items: [
+    { t: "Kinematics", q: 10, sub: "phy", note: "revision" },
+    { t: "Mole Concept + % Composition", q: 10, sub: "chem", note: "revision" },
+    { t: "WEP", q: 7, sub: "phy", note: "new topic — self-study" },
+    { t: "Trigonometry", q: 13, sub: "math", note: "revision" },
+  ] },
+  { date: "2026-08-23", items: [
+    { t: "Kinematics", q: 10, sub: "phy", note: "revision" },
+    { t: "Atomic Structure", q: 10, sub: "chem", note: "new topic" },
+    { t: "Sets + Relation & Function", q: 13, sub: "math", note: "revision" },
+    { t: "Trigonometry", q: 12, sub: "math", note: "revision" },
+  ] },
+  { date: "2026-08-24", items: [
+    { t: "NLM", q: 12, sub: "phy", note: "revision" },
+    { t: "Atomic Structure", q: 10, sub: "chem", note: "new topic" },
+    { t: "Sets + Relation & Function", q: 13, sub: "math", note: "revision" },
+    { t: "Straight Line", q: 5, sub: "math", note: "new — Target Level 1" },
+  ] },
+  { date: "2026-08-25", items: [
+    { t: "NLM", q: 12, sub: "phy", note: "revision" },
+    { t: "Atomic Structure", q: 10, sub: "chem", note: "new topic" },
+    { t: "Sets + Relation & Function", q: 12, sub: "math", note: "revision" },
+    { t: "Straight Line", q: 5, sub: "math", note: "new — Target Level 1" },
+  ] },
+  { date: "2026-08-26", items: [
+    { t: "NLM", q: 6, sub: "phy", note: "revision — finishing up" },
+    { t: "Friction", q: 8, sub: "phy", note: "revision / application" },
+    { t: "Atomic Structure", q: 10, sub: "chem", note: "new topic" },
+    { t: "Sets + Relation & Function", q: 12, sub: "math", note: "revision" },
+    { t: "Circle", q: 5, sub: "math", note: "new — Target Level 1" },
+  ] },
+  { date: "2026-08-27", items: [
+    { t: "Friction", q: 7, sub: "phy", note: "revision — finishing up" },
+    { t: "Atomic Structure", q: 10, sub: "chem", note: "new topic" },
+    { t: "Circle", q: 5, sub: "math", note: "new — Target Level 1" },
+    { t: "Mixed revision (all subjects)", q: 18, sub: "rev", note: "concept-recognition practice" },
+  ] },
+  { date: "2026-08-28", items: [
+    { t: "Mole Concept + % Composition", q: 10, sub: "chem", note: "revision — finishing up" },
+    { t: "Trigonometry", q: 13, sub: "math", note: "revision" },
+    { t: "Mixed revision (all subjects)", q: 20, sub: "rev", note: "unfamiliar questions" },
+  ] },
+  { date: "2026-08-29", items: [
+    { t: "Mole Concept + % Composition", q: 10, sub: "chem", note: "revision" },
+    { t: "Mixed revision (all subjects)", q: 35, sub: "rev", note: "application" },
+  ] },
+  { date: "2026-08-30", items: [
+    { t: "Mixed revision — Chemistry priority", q: 20, sub: "rev" },
+    { t: "Mixed revision — Physics", q: 15, sub: "rev" },
+    { t: "Mixed revision — Maths", q: 10, sub: "rev" },
+  ] },
+  { date: "2026-08-31", items: [
+    { t: "Mixed revision — Chemistry priority", q: 20, sub: "rev" },
+    { t: "Mixed revision — Physics", q: 15, sub: "rev" },
+    { t: "Mixed revision — Maths", q: 10, sub: "rev" },
+  ] },
+  { date: "2026-09-01", items: [
+    { t: "Mixed revision — Chemistry priority", q: 18, sub: "rev" },
+    { t: "Mixed revision — Physics", q: 14, sub: "rev" },
+    { t: "Mixed revision — Maths", q: 12, sub: "rev" },
+  ] },
+  { date: "2026-09-02", items: [
+    { t: "Mixed revision — Chemistry priority", q: 18, sub: "rev" },
+    { t: "Mixed revision — Physics", q: 14, sub: "rev" },
+    { t: "Mixed revision — Maths", q: 12, sub: "rev" },
+  ] },
+  { date: "2026-09-03", items: [
+    { t: "Full-syllabus mock practice", q: 50, sub: "rev", note: "timed mixed Level 1" },
+  ] },
+  { date: "2026-09-04", revision: true, note: "Light revision only — redo flagged/wrong questions, clear final doubts." },
+  { date: "2026-09-05", revision: true, note: "Doubt-clearing deadline — no new heavy topics." },
+  { date: "2026-09-06", items: [
+    { t: "GT-02 mock / selected mixed set", q: 45, sub: "rev", note: "timed + analyse immediately" },
+  ] },
+  { date: "2026-09-07", items: [
+    { t: "Chemistry weak areas", q: 20, sub: "chem" }, { t: "Physics weak areas", q: 15, sub: "phy" }, { t: "Maths weak areas", q: 15, sub: "math" },
+  ] },
+  { date: "2026-09-08", items: [
+    { t: "Chemistry application", q: 20, sub: "chem" }, { t: "NLM/WEP application", q: 15, sub: "phy" }, { t: "Straight Line/Circle", q: 15, sub: "math" },
+  ] },
+  { date: "2026-09-09", items: [
+    { t: "Mixed JEE Main-level set", q: 50, sub: "rev", note: "focus on unfamiliar questions" },
+  ] },
+  { date: "2026-09-10", items: [
+    { t: "GT-02 style mini mock", q: 45, sub: "rev", note: "135-minute discipline practice" },
+  ] },
+  { date: "2026-09-11", revision: true, note: "Light revision, formulas, marked doubts, confidence and sleep. No new grinding." },
 ];
 
-const dayFocus: Record<string, { chem: string; physics: string; maths: string }> = {
-  Monday: { chem: "Atomic Structure — Bohr model, spectra, quantum numbers", physics: "WEP — work by constant/variable force, work-energy theorem", maths: "Straight Line — slope, forms of line, angle between lines" },
-  Tuesday: { chem: "Atomic Structure — photoelectric effect + de Broglie + numericals", physics: "WEP — potential energy, conservation of mechanical energy", maths: "Straight Line — distance, section formula, family of lines" },
-  Wednesday: { chem: "Mole Concept — Level 1 maintenance + mixed numericals", physics: "Kinematics + NLM — mixed Level 1 reinforcement", maths: "Circle — standard equation, centre/radius, basic problems" },
-  Thursday: { chem: "Atomic Structure — quantum numbers, orbitals, electronic configuration", physics: "WEP — spring work + mixed energy problems", maths: "Circle — tangent/chord basics + selected Target Level 1" },
-  Friday: { chem: "Atomic Structure — full chapter revision + Level 1", physics: "Vectors + Kinematics + NLM — mixed timed set", maths: "Straight Line + Circle — mixed timed set" },
-  Saturday: { chem: "Atomic Structure — weak areas from the week", physics: "WEP — Level 1 H.C. Verma / teacher-marked questions", maths: "Straight Line + Circle — Target Level 1" },
-  Sunday: { chem: "Weekly chemistry review + error correction", physics: "Weekly physics review + WEP reattempts", maths: "Weekly maths review + mixed problems" },
-};
+const ROUTINE: Row[] = [
+  { time: "11:00–11:45", title: "Wake up + breakfast + get ready", desc: "Start the day without rushing into a study block.", subject: "life" },
+  { time: "11:45–13:45", title: "Self-study block 1", desc: "Chemistry priority — Atomic Structure / Mole maintenance / N. Avasthi Level 1.", subject: "chem" },
+  { time: "13:45–14:15", title: "Lunch break", desc: "Eat and reset.", subject: "life" },
+  { time: "14:15–16:00", title: "Self-study block 2", desc: "Physics — WEP / NLM / Kinematics / H.C. Verma Level 1.", subject: "phy" },
+  { time: "16:00–16:30", title: "Travel / coaching buffer", desc: "Pack, travel, transition.", subject: "life" },
+  { time: "16:30–21:15", title: "Coaching", desc: "Class + travel buffer. Mark doubts and teacher-selected problems.", subject: "life" },
+  { time: "21:15–21:45", title: "Dinner + break", desc: "Reset before the night session.", subject: "life" },
+  { time: "21:45–23:15", title: "Self-study block 3", desc: "Maths — Straight Line / Circle / revision + Target Level 1.", subject: "math" },
+  { time: "23:15–23:30", title: "Short break", desc: "No doom-scrolling.", subject: "life" },
+  { time: "23:30–01:00", title: "Self-study block 4", desc: "Coaching homework + same-day revision.", subject: "life" },
+  { time: "01:00–01:30", title: "Daily log", desc: "Questions, hours, doubts, GT mistakes and notes.", subject: "life" },
+  { time: "01:30–03:00", title: "Buffer / catch-up / question finishing", desc: "Finish the daily target if needed; otherwise light revision.", subject: "life" },
+  { time: "03:00–03:30", title: "Wind down", desc: "Screens down, plan tomorrow.", subject: "life" },
+  { time: "03:30", title: "Sleep", desc: "Protect the sleep window.", subject: "life" },
+];
 
-function makeRows(): Row[] {
-  return week.flatMap((day) => template.map(([time, slot, subject, topic, type, target, done, hours]) => {
-    let finalTopic = String(topic);
-    if (slot === "Chemistry priority block") finalTopic = dayFocus[day].chem;
-    if (slot === "Physics / Maths side-by-side") finalTopic = dayFocus[day].physics;
-    if (slot === "Question-solving block") finalTopic = dayFocus[day].maths;
-    if (slot === "Revision block") finalTopic = dayFocus[day].chem;
-    if (slot === "Night study block") finalTopic = dayFocus[day].physics;
-    return { day, time: String(time), slot: String(slot), subject: String(subject), topic: finalTopic, type: String(type), target: Number(target), done: Number(done), hours: Number(hours), status: "Planned", notes: "" };
-  }));
+function isoToday() { return new Date().toISOString().slice(0, 10); }
+function fmtDate(iso: string) { return new Date(`${iso}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }); }
+function fmtWeekday(iso: string) { return new Date(`${iso}T12:00:00`).toLocaleDateString("en-US", { weekday: "long" }); }
+function daysLeft(target: string) { return Math.max(0, Math.ceil((new Date(target).getTime() - Date.now()) / 86400000)); }
+function makeEmptyLogs(): Record<string, Log> { return {}; }
+
+function defaultRows() {
+  return WEEK.flatMap((day) => ROUTINE.map((r) => ({ ...r, day })));
 }
 
 export default function PersonalTimetablePage() {
-  const [rows, setRows] = useState<Row[]>(makeRows);
-  const [activeDay, setActiveDay] = useState("Monday");
-  const [saved, setSaved] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [isViewer, setIsViewer] = useState(false);
+  const [activeView, setActiveView] = useState<"today" | "schedule" | "progress" | "syllabus">("today");
+  const [currentDate, setCurrentDate] = useState(isoToday());
+  const [rows, setRows] = useState<Row[]>(defaultRows());
+  const [logs, setLogs] = useState<Record<string, Log>>(makeEmptyLogs());
+  const [syllabus, setSyllabus] = useState<Record<string, Status>>({});
+  const [viewer, setViewer] = useState(false);
   const [studentName, setStudentName] = useState("JEE 2028 student");
   const [shareUrl, setShareUrl] = useState("");
+  const [syncState, setSyncState] = useState<"idle" | "syncing" | "saved" | "error">("idle");
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const share = params.get("share");
+    const share = new URLSearchParams(window.location.search).get("share");
     if (share) {
-      setIsViewer(true);
+      setViewer(true);
       fetch(`/api/personal-timetable?share=${encodeURIComponent(share)}`)
         .then((r) => r.ok ? r.json() : Promise.reject(new Error("Share link unavailable")))
-        .then((data) => { if (Array.isArray(data.payload)) setRows(data.payload as Row[]); setStudentName(data.studentName ?? "JEE 2028 student"); })
-        .catch(() => undefined);
+        .then((data) => {
+          if (Array.isArray(data.payload?.rows) && data.payload.rows.length) setRows(data.payload.rows as Row[]);
+          if (data.payload?.logs) setLogs(data.payload.logs as Record<string, Log>);
+          if (data.payload?.syllabus) setSyllabus(data.payload.syllabus as Record<string, Status>);
+          setStudentName(data.studentName ?? "JEE 2028 student");
+        })
+        .catch(() => setSyncState("error"));
       return;
     }
+
     try {
-      const stored = localStorage.getItem("jee2028-personal-timetable-v2");
-      if (stored) setRows(JSON.parse(stored) as Row[]);
-    } catch { /* seeded plan remains available */ }
+      const local = localStorage.getItem("jee2028-grind-tracker");
+      if (local) {
+        const parsed = JSON.parse(local) as { rows?: Row[]; logs?: Record<string, Log>; syllabus?: Record<string, Status> };
+        if (parsed.rows?.length) setRows(parsed.rows);
+        if (parsed.logs) setLogs(parsed.logs);
+        if (parsed.syllabus) setSyllabus(parsed.syllabus);
+      }
+    } catch { /* remote data is still attempted */ }
+
     fetch("/api/personal-timetable")
       .then((r) => r.ok ? r.json() : Promise.reject(new Error("Not signed in")))
       .then((data) => {
-        if (Array.isArray(data.payload) && data.payload.length) setRows(data.payload as Row[]);
+        const p = data.payload;
+        if (Array.isArray(p?.rows) && p.rows.length) setRows(p.rows as Row[]);
+        if (p?.logs) setLogs(p.logs as Record<string, Log>);
+        if (p?.syllabus) setSyllabus(p.syllabus as Record<string, Status>);
         if (data.shareToken) setShareUrl(`${window.location.origin}/personal-timetable?share=${data.shareToken}`);
       })
       .catch(() => undefined);
   }, []);
 
-  const dayRows = useMemo(() => rows.filter((r) => r.day === activeDay), [rows, activeDay]);
-  const totals = useMemo(() => ({
-    completedHours: rows.reduce((sum, r) => sum + (r.status === "Done" ? r.hours : 0), 0),
-    questionsDone: rows.reduce((sum, r) => sum + r.done, 0),
-  }), [rows]);
-  const daily = useMemo(() => week.map((day) => {
-    const ds = rows.filter((r) => r.day === day);
-    return { day: day.slice(0, 3), hours: Number(ds.reduce((s, r) => s + (r.status === "Done" ? r.hours : 0), 0).toFixed(1)) };
-  }), [rows]);
+  const todayLog = logs[currentDate] ?? { q: { phy: 0, chem: 0, math: 0 }, touched: { phy: false, chem: false, math: false }, hrs: 0, notes: "" };
+  const todayPlan = DAILY_PLAN.find((p) => p.date === currentDate);
+  const plannedQ = todayPlan?.items?.reduce((sum, item) => sum + item.q, 0) ?? 0;
+  const todayQ = Object.values(todayLog.q).reduce((sum, value) => sum + (Number(value) || 0), 0);
+  const touched = (Object.values(todayLog.touched) as boolean[]).filter(Boolean).length;
 
-  function updateRow(day: string, time: string, key: keyof Row, value: string) {
-    setRows((current) => current.map((r) => r.day === day && r.time === time ? { ...r, [key]: ["target", "done", "hours"].includes(key) ? Number(value) || 0 : value } as Row : r));
-    setSaved(false);
+  const progressDays = useMemo(() => {
+    const out: { iso: string; data: Log | null }[] = [];
+    for (let i = 27; i >= 0; i -= 1) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const iso = d.toISOString().slice(0, 10);
+      out.push({ iso, data: logs[iso] ?? null });
+    }
+    return out;
+  }, [logs]);
+
+  const last21 = progressDays.slice(-21);
+  const loggedDays = progressDays.filter((d) => d.data);
+  const totalQ = loggedDays.reduce((sum, d) => sum + (d.data?.q.phy ?? 0) + (d.data?.q.chem ?? 0) + (d.data?.q.math ?? 0), 0);
+  const totalHrs = loggedDays.reduce((sum, d) => sum + (d.data?.hrs ?? 0), 0);
+  const avgQ = loggedDays.length ? Math.round(totalQ / loggedDays.length) : 0;
+  let streak = 0;
+  for (let i = progressDays.length - 1; i >= 0; i -= 1) {
+    const q = progressDays[i].data ? (progressDays[i].data?.q.phy ?? 0) + (progressDays[i].data?.q.chem ?? 0) + (progressDays[i].data?.q.math ?? 0) : 0;
+    if (q >= 40) streak += 1; else break;
   }
 
-  async function save() {
-    localStorage.setItem("jee2028-personal-timetable-v2", JSON.stringify(rows));
-    setSyncing(true); setSaved(false);
-    try {
-      const response = await fetch("/api/personal-timetable", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rows }) });
-      if (response.ok) {
-        const data = await response.json();
-        if (data.shareToken) setShareUrl(`${window.location.origin}/personal-timetable?share=${data.shareToken}`);
-        setSaved(true);
-      }
-    } finally { setSyncing(false); }
-  }
+  const daysToDoubt = daysLeft(DOUBT_DEADLINE);
+  const daysToGT = daysLeft(EXAM_DATE);
 
-  async function createShareLink() {
-    setSyncing(true);
+  async function saveAll(nextLogs = logs, nextRows = rows, nextSyllabus = syllabus) {
+    localStorage.setItem("jee2028-grind-tracker", JSON.stringify({ logs: nextLogs, rows: nextRows, syllabus: nextSyllabus }));
+    if (viewer) return;
+    setSyncState("syncing");
     try {
-      await fetch("/api/personal-timetable", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rows }) });
-      const response = await fetch("/api/personal-timetable", { method: "POST" });
-      if (!response.ok) return;
+      const response = await fetch("/api/personal-timetable", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rows: nextRows, logs: nextLogs, syllabus: nextSyllabus }) });
+      if (!response.ok) throw new Error("Save failed");
       const data = await response.json();
-      const url = `${window.location.origin}/personal-timetable?share=${data.shareToken}`;
-      setShareUrl(url);
-      await navigator.clipboard?.writeText(url);
-    } finally { setSyncing(false); }
+      if (data.shareToken) setShareUrl(`${window.location.origin}/personal-timetable?share=${data.shareToken}`);
+      setSyncState("saved");
+    } catch { setSyncState("error"); }
   }
 
-  function resetSeed() { setRows(makeRows()); localStorage.removeItem("jee2028-personal-timetable-v2"); setSaved(false); }
+  async function ensureShareLink() {
+    if (viewer) return;
+    setSyncState("syncing");
+    try {
+      await saveAll();
+      const response = await fetch("/api/personal-timetable", { method: "POST" });
+      if (!response.ok) throw new Error("Could not create share link");
+      const data = await response.json();
+      const link = `${window.location.origin}/personal-timetable?share=${data.shareToken}`;
+      setShareUrl(link);
+      await navigator.clipboard?.writeText(link);
+      setSyncState("saved");
+    } catch { setSyncState("error"); }
+  }
+
+  function updateTodayLog(patch: Partial<Log>) {
+    const next = { ...todayLog, ...patch };
+    const nextLogs = { ...logs, [currentDate]: next };
+    setLogs(nextLogs);
+    setSyncState("idle");
+  }
+
+  function updateSyllabus(key: string) {
+    if (viewer) return;
+    const current = syllabus[key] ?? "progress";
+    const next: Status = current === "todo" ? "progress" : current === "progress" ? "done" : "todo";
+    const nextSyllabus = { ...syllabus, [key]: next };
+    setSyllabus(nextSyllabus);
+    void saveAll(logs, rows, nextSyllabus);
+  }
+
+  const actualRoutine = rows.filter((r) => r.day === fmtWeekday(currentDate));
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
-      <div className="mx-auto max-w-[1500px] p-4 sm:p-6 lg:p-10">
-        <header className="mb-8 flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-400">JEE 2028 • {isViewer ? "Read-only progress view" : "Personal command centre"}</p>
-            <h1 className="mt-2 text-4xl font-black tracking-tight sm:text-5xl">Personal Timetable & Progress</h1>
-            <p className="mt-2 max-w-4xl text-slate-400">{isViewer ? `Viewing ${studentName}'s shared progress. Editing is disabled.` : "Built around your actual routine: wake around 11 AM, coaching 4:30–9:15 PM, 6–7 hours of self-study, Chemistry priority, and daily question solving."}</p>
-          </div>
-          {!isViewer && <div className="flex flex-wrap gap-2">
-            <button onClick={save} disabled={syncing} className="rounded-xl bg-emerald-400 px-4 py-2.5 text-sm font-bold text-slate-950 hover:bg-emerald-300 disabled:opacity-60">{syncing ? "Syncing…" : saved ? "Saved ✓" : "Save & sync"}</button>
-            <button onClick={createShareLink} disabled={syncing} className="rounded-xl border border-sky-500/40 bg-sky-500/10 px-4 py-2.5 text-sm font-bold text-sky-300 hover:bg-sky-500/20 disabled:opacity-60">Share read-only</button>
-            <button onClick={resetSeed} className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-slate-300 hover:bg-slate-800">Reset seeded plan</button>
-          </div>}
+    <main className="min-h-screen bg-[#0B0D12] text-[#E7E9EE]">
+      <div className="mx-auto max-w-[980px] px-4 pb-20 pt-6 sm:px-6">
+        <header className="mb-5 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-baseline gap-3"><span className="font-bold text-[20px]">Arnav's JEE Grind</span><span className="font-mono text-[11px] text-[#565D70]">GT-02 · 12 Sep</span></div>
+          <div className="flex items-center gap-3 rounded-[14px] border border-[#232838] bg-[#12151C] px-3 py-2"><div className="text-right"><div className="font-bold text-[#3DDCFF]">{daysToDoubt}d</div><div className="text-[9px] uppercase tracking-wider text-[#565D70]">to Sep 5 doubts</div></div><div className="h-8 w-px bg-[#232838]"/><div className="text-right"><div className="font-bold text-[#FFB454]">{daysToGT}d</div><div className="text-[9px] uppercase tracking-wider text-[#565D70]">to GT-02</div></div></div>
         </header>
 
-        {!isViewer && shareUrl && <section className="mb-6 rounded-2xl border border-sky-500/20 bg-sky-500/5 p-4"><div className="text-sm font-bold text-sky-300">Parent / teacher view link</div><div className="mt-2 break-all text-xs text-slate-400">{shareUrl}</div><p className="mt-2 text-xs text-slate-500">Anyone with this unlisted link can view progress, but cannot edit the timetable.</p></section>}
+        <nav className="mb-5 flex gap-1 overflow-x-auto rounded-[12px] border border-[#232838] bg-[#12151C] p-1">
+          {([['today','Today'],['schedule','Schedule'],['progress','Progress'],['syllabus','Syllabus']] as const).map(([key,label]) => <button key={key} onClick={() => setActiveView(key)} className={`whitespace-nowrap rounded-[8px] px-4 py-2.5 text-[13px] font-semibold ${activeView === key ? 'bg-[#171B24] text-[#E7E9EE] shadow-[inset_0_0_0_1px_#232838]' : 'text-[#8B92A5] hover:text-[#E7E9EE]'}`}>{label}</button>)}
+        </nav>
 
-        <section className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          <Stat label="Self-study target" value="6–7 h/day" hint="Coaching is separate" /><Stat label="Questions" value={`${totals.questionsDone} done`} hint="Target 50+ / day" /><Stat label="Chemistry" value="Priority" hint="Daily first major block" /><Stat label="Sleep target" value="3:15–3:30 AM" hint="Keep it consistent" /><Stat label="GT-02" value="12 Sep 2026" hint="135 min • 45 Q" />
-        </section>
+        {activeView === "today" && <TodayView currentDate={currentDate} setCurrentDate={setCurrentDate} log={todayLog} updateLog={updateTodayLog} plannedQ={plannedQ} todayQ={todayQ} touched={touched} plan={todayPlan} routine={actualRoutine.length ? actualRoutine : ROUTINE.map((r) => ({ ...r, day: fmtWeekday(currentDate) }))} viewer={viewer} studentName={studentName} shareUrl={shareUrl} onShare={ensureShareLink} onSave={() => void saveAll()} syncState={syncState} />}
+        {activeView === "schedule" && <ScheduleView viewer={viewer} />}
+        {activeView === "progress" && <ProgressView totalQ={totalQ} avgQ={avgQ} streak={streak} totalHrs={totalHrs} last21={last21} progressDays={progressDays} />}
+        {activeView === "syllabus" && <SyllabusView syllabus={syllabus} onToggle={updateSyllabus} viewer={viewer} />}
 
-        <section className="mb-6 grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5">
-            <div className="flex items-center justify-between gap-4"><div><h2 className="font-bold">Weekly progress graph</h2><p className="mt-1 text-xs text-slate-500">Only blocks marked Done count as actual study hours.</p></div><div className="text-right"><div className="text-2xl font-black text-emerald-400">{totals.completedHours.toFixed(1)} h</div><div className="text-xs text-slate-500">completed</div></div></div>
-            <div className="mt-5 grid grid-cols-7 items-end gap-2 sm:gap-4" style={{ minHeight: 170 }}>{daily.map((d) => { const height = Math.min(100, (d.hours / 7) * 100); return <div key={d.day} className="flex h-40 flex-col items-center justify-end gap-2"><div className="text-[10px] text-slate-500">{d.hours}h</div><div className="w-full max-w-10 rounded-t-lg bg-emerald-400/80" style={{ height: `${Math.max(4, height)}%` }} /><div className="text-xs font-semibold text-slate-400">{d.day}</div></div>; })}</div>
-          </div>
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5"><h2 className="font-bold">GT improvement checklist</h2><div className="mt-4 space-y-3 text-sm text-slate-300">{["Ask teacher about doubts instead of carrying them forward", "Analyse wrong + unattempted GT questions", "Look back at the exact concept behind each mistake", "Reattempt corrected questions without seeing the solution", "Use teacher-marked Level 1 questions from external books"].map((item) => <label key={item} className="flex gap-3"><input type="checkbox" disabled={isViewer} className="mt-1 accent-emerald-400" /><span>{item}</span></label>)}</div></div>
-        </section>
-
-        <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900/70 p-4"><div className="flex flex-wrap gap-2">{week.map((day) => <button key={day} onClick={() => setActiveDay(day)} className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${activeDay === day ? "bg-emerald-400 text-slate-950" : "bg-slate-800 text-slate-300 hover:bg-slate-700"}`}>{day}</button>)}</div></section>
-
-        <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
-          <div className="border-b border-slate-800 bg-slate-900/95 px-5 py-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold">{activeDay} plan</h2><p className="text-xs text-slate-500">{isViewer ? "Read-only view for parents/teachers." : "Edit actuals, status and notes as you work."}</p></div><div className="text-xs text-slate-500">Daily target: <span className="font-bold text-slate-300">50+ questions</span></div></div></div>
-          <div className="overflow-x-auto"><table className="min-w-[1450px] w-full text-left text-sm"><thead className="bg-slate-800/80 text-xs uppercase tracking-wide text-slate-400"><tr><th className="px-4 py-3">Time</th><th className="px-4 py-3">Block</th><th className="px-4 py-3">Subject</th><th className="px-4 py-3">Task / topic</th><th className="px-4 py-3">Study type</th><th className="px-4 py-3">Target Qs</th><th className="px-4 py-3">Done</th><th className="px-4 py-3">Hours</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Notes</th></tr></thead>
-            <tbody className="divide-y divide-slate-800">{dayRows.map((r) => <tr key={`${r.day}-${r.time}`} className="align-top hover:bg-slate-800/40"><td className="whitespace-nowrap px-4 py-3 font-bold text-emerald-300">{r.time}</td><td className="px-4 py-3 font-medium text-slate-200">{r.slot}</td><td className="px-4 py-3 text-slate-300">{r.subject}</td><td className="min-w-72 px-4 py-3 text-slate-300">{r.topic}</td><td className="px-4 py-3 text-slate-400">{r.type}</td><Cell value={String(r.target)} onChange={(v) => updateRow(r.day, r.time, "target", v)} number disabled={isViewer} /><Cell value={String(r.done)} onChange={(v) => updateRow(r.day, r.time, "done", v)} number disabled={isViewer} /><Cell value={String(r.hours)} onChange={(v) => updateRow(r.day, r.time, "hours", v)} number disabled={isViewer} /><td className="px-4 py-3"><select disabled={isViewer} value={r.status} onChange={(e) => updateRow(r.day, r.time, "status", e.target.value)} className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs disabled:opacity-70"><option>Planned</option><option>Done</option><option>Partial</option><option>Skipped</option></select></td><Cell value={r.notes} onChange={(v) => updateRow(r.day, r.time, "notes", v)} placeholder="What happened? Doubt? Mistake?" disabled={isViewer} /></tr>)}</tbody>
-          </table></div>
-        </section>
-
-        <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Panel title="External-book targets"><p><b>Physics:</b> H.C. Verma Level 1, teacher-marked questions first. <b>Maths:</b> Target Level 1. <b>Chemistry:</b> N. Avasthi Level 1.</p></Panel>
-          <Panel title="Already covered"><p>Vectors, Kinematics, NLM, basic Trigonometry, Sets, Functions/R&amp;F and Mole Concept are treated as revision/practice—not first-time learning.</p></Panel>
-          <Panel title="Current priority"><p><b>Chemistry:</b> Atomic Structure. <b>Physics:</b> WEP. <b>Maths:</b> Straight Line + Circle. Completed chapters stay alive through mixed Level 1 practice.</p></Panel>
-          <Panel title="Actual GT-02"><p>12 Sep 2026 • 135 min • 45 questions. Physics: Vector, Kinematics, NLM, WEP. Chemistry: Mole Concept, Atomic Structure. Maths: Trig, Sets, R&amp;F, Straight Line, Circle.</p></Panel>
-        </section>
+        <footer className="mt-8 text-center font-mono text-[10px] text-[#565D70]">{viewer ? "Read-only shared progress · no editing" : "Private owner dashboard · shareable read-only parent/teacher view"}</footer>
       </div>
     </main>
   );
 }
 
-function Cell({ value, onChange, placeholder = "", number, disabled = false }: { value: string; onChange: (v: string) => void; placeholder?: string; number?: boolean; disabled?: boolean }) {
-  return <td className="px-4 py-3"><input disabled={disabled} type={number ? "number" : "text"} min={number ? 0 : undefined} step={number ? "0.25" : undefined} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="w-full min-w-24 rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs outline-none placeholder:text-slate-600 focus:border-emerald-400 disabled:cursor-not-allowed disabled:opacity-70" /></td>;
+function TodayView({ currentDate, setCurrentDate, log, updateLog, plannedQ, todayQ, touched, plan, routine, viewer, studentName, shareUrl, onShare, onSave, syncState }: any) {
+  const totalHit = todayQ >= 40;
+  const hrsHit = log.hrs >= 6;
+  return <div className="space-y-4">
+    <section className="rounded-2xl border border-[#232838] bg-[#12151C] p-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><div className="text-[26px] font-bold">{fmtDate(currentDate)}</div><div className="text-[13px] text-[#8B92A5]">{fmtWeekday(currentDate)} · {viewer ? `Viewing ${studentName}` : "Your personal dashboard"}</div></div><div className="flex gap-2"><button disabled={viewer} onClick={() => setCurrentDate(shiftIso(currentDate,-1))} className="h-9 w-9 rounded-[9px] border border-[#232838] bg-[#171B24] text-[#8B92A5] disabled:opacity-40">‹</button><button disabled={viewer} onClick={() => setCurrentDate(isoToday())} className="h-9 w-9 rounded-[9px] border border-[#232838] bg-[#171B24] text-[#8B92A5] disabled:opacity-40">•</button><button disabled={viewer} onClick={() => setCurrentDate(shiftIso(currentDate,1))} className="h-9 w-9 rounded-[9px] border border-[#232838] bg-[#171B24] text-[#8B92A5] disabled:opacity-40">›</button></div></div>
+      <div className="mb-4 grid grid-cols-3 gap-2"><Metric value={todayQ} label="Questions solved" good={totalHit}/><Metric value={log.hrs.toFixed(1)} label="Self-study hrs" good={hrsHit}/><Metric value={`${touched}/3`} label="Subjects touched" good={touched===3}/></div>
+      <div className="mb-3 text-[10px] uppercase tracking-wider text-[#565D70]">Subject log — questions solved & touched today</div>
+      <div className="grid gap-3 md:grid-cols-3">
+        {(['phy','chem','math'] as Subject[]).map((s) => <div key={s} className="rounded-xl border border-[#232838] bg-[#171B24] p-3" style={{ boxShadow: log.touched[s] ? `inset 0 0 0 1.5px ${SUBJECT_META[s].color}` : undefined }}><div className="mb-2 font-bold" style={{ color: SUBJECT_META[s].color }}>{SUBJECT_META[s].label}</div><div className="text-[10px] uppercase tracking-wider text-[#565D70]">Questions</div><input disabled={viewer} type="number" min={0} value={log.q[s] || ""} onChange={(e) => updateLog({ q: { ...log.q, [s]: Number(e.target.value) || 0 } })} className="mt-1 w-full rounded-lg border border-[#232838] bg-[#0B0D12] px-2.5 py-2 font-mono text-sm outline-none"/><label className="mt-2 flex items-center gap-2 text-[11px] text-[#8B92A5]"><input disabled={viewer} type="checkbox" checked={!!log.touched[s]} onChange={(e) => updateLog({ touched: { ...log.touched, [s]: e.target.checked } })}/>Touched today</label></div>)}
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-[160px_1fr]"><div><label className="text-[10px] uppercase tracking-wider text-[#565D70]">Self-study hours</label><input disabled={viewer} type="number" min={0} max={14} step={0.25} value={log.hrs || ""} onChange={(e) => updateLog({ hrs: Number(e.target.value) || 0 })} className="mt-1 w-full rounded-lg border border-[#232838] bg-[#171B24] px-2.5 py-2 font-mono text-sm outline-none"/></div><div><label className="text-[10px] uppercase tracking-wider text-[#565D70]">Notes / stuck points</label><textarea disabled={viewer} value={log.notes} onChange={(e) => updateLog({ notes: e.target.value })} placeholder="What did you cover? What blocked you? Which doubt goes to teacher?" className="mt-1 min-h-[76px] w-full rounded-lg border border-[#232838] bg-[#171B24] px-3 py-2 text-sm outline-none"/></div></div>
+      {!viewer && <div className="mt-3 flex flex-wrap items-center gap-2"><button onClick={onSave} className="rounded-lg bg-[#3DDCFF] px-5 py-2.5 font-semibold text-[#031014]">{syncState === 'syncing' ? 'Saving…' : syncState === 'saved' ? 'Saved ✓' : 'Save today'}</button><button onClick={onShare} className="rounded-lg border border-[#232838] bg-[#171B24] px-4 py-2.5 text-sm text-[#8B92A5]">Share read-only</button>{shareUrl && <span className="max-w-full break-all text-[10px] text-[#565D70]">{shareUrl}</span>}</div>}
+      {viewer && <div className="mt-3 text-[11px] text-[#565D70]">Read-only: parents and teachers can inspect the progress but cannot change it.</div>}
+    </section>
+
+    <section className="rounded-2xl border border-[#232838] bg-[#12151C] p-5"><h2 className="mb-3 flex items-center justify-between text-[15px] font-semibold">Today's syllabus target <span className="text-[11px] font-normal text-[#565D70]">{plannedQ ? `${plannedQ} planned questions` : "No fixed plan"}</span></h2>{plan?.revision ? <div className="rounded-xl border border-[#4ADE80]/20 bg-[#4ADE80]/5 p-3 text-sm text-[#4ADE80]">🔁 {plan.note}</div> : plan?.items ? <div className="space-y-2">{plan.items.map((item: any) => <div key={`${item.t}-${item.sub}`} className="flex items-center gap-3 border-b border-[#232838] py-2 last:border-b-0"><div className="w-20 text-[11px] font-bold" style={{color:item.sub==='rev'?'#4ADE80':SUBJECT_META[item.sub as Subject].color}}>{item.sub==='rev'?'REV':SUBJECT_META[item.sub as Subject].label.slice(0,4).toUpperCase()}</div><div className="flex-1 text-[13px]">{item.t}<div className="text-[10px] text-[#565D70]">{item.note}</div></div><div className="rounded-lg bg-[#171B24] px-2.5 py-1 font-mono text-sm">{item.q}</div></div>)}</div> : <div className="text-[12px] text-[#565D70]">Use coaching homework + mixed revision.</div>}</section>
+
+    <section className="rounded-2xl border border-[#232838] bg-[#12151C] p-5"><h2 className="mb-3 flex items-center justify-between text-[15px] font-semibold">Today's routine <span className="text-[11px] font-normal text-[#565D70]">11:00 AM wake → 3:30 AM sleep</span></h2><div className="space-y-0">{ROUTINE.map((item) => <div key={item.time} className="flex gap-3 border-b border-[#232838] py-3 last:border-b-0"><div className="w-[80px] shrink-0 font-mono text-[11px] text-[#565D70]">{item.time}</div><div className="mt-1 h-2 w-2 shrink-0 rounded-full" style={{background:item.subject==='life'?'#565D70':SUBJECT_META[item.subject as Subject].color}}/><div><div className="text-[13px] font-semibold">{item.title}</div><div className="text-[12px] text-[#8B92A5]">{item.desc}</div></div></div>)}</div></section>
+  </div>;
 }
-function Stat({ label, value, hint }: { label: string; value: string; hint: string }) { return <div className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-4"><div className="text-xs text-slate-500">{label}</div><div className="mt-1 text-xl font-black">{value}</div><div className="mt-1 text-[11px] text-slate-600">{hint}</div></div>; }
-function Panel({ title, children }: { title: string; children: React.ReactNode }) { return <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5"><h2 className="font-semibold text-emerald-400">{title}</h2><div className="mt-2 text-sm leading-6 text-slate-400">{children}</div></section>; }
+
+function ScheduleView({ viewer }: { viewer: boolean }) {
+  return <div className="space-y-4"><section className="rounded-2xl border border-[#232838] bg-[#12151C] p-5"><h2 className="mb-1 text-[15px] font-semibold">Syllabus plan — now to GT-02</h2><p className="mb-4 text-[12px] text-[#565D70]">Near-done chapters stay in revision while new topics move forward in parallel.</p>{DAILY_PLAN.map((p) => { const today = isoToday(); const past = p.date < today; const current = p.date === today; const total = p.items?.reduce((s,i)=>s+i.q,0) ?? 0; return <div key={p.date} className={`border-b border-[#232838] py-3 last:border-b-0 ${past?'opacity-40':''} ${current?'rounded-lg bg-[#3DDCFF]/5 px-3':''}`}><div className="mb-1 flex items-center gap-2 text-[12px] font-bold">{fmtDate(p.date)} {current && <span className="rounded-full bg-[#3DDCFF] px-2 py-0.5 text-[9px] text-[#031014]">TODAY</span>}</div>{p.revision ? <div className="text-[12px] text-[#4ADE80]">🔁 {p.note}</div> : <div className="text-[12.5px] leading-6">{p.items?.map((i,idx)=><span key={idx}><span style={{color:i.sub==='rev'?'#4ADE80':SUBJECT_META[i.sub as Subject].color}}>{i.sub==='rev'?'REV':SUBJECT_META[i.sub as Subject].label}</span>: {i.t} ({i.q}){idx < (p.items?.length ?? 1)-1 ? ' · ' : ''}</span>)} <strong> · = {total} Qs</strong></div>}</div>})}</section><section className="rounded-2xl border border-[#232838] bg-[#12151C] p-5"><h2 className="mb-3 text-[15px] font-semibold">Daily template</h2>{ROUTINE.map((item)=><div key={item.time} className="flex gap-3 border-b border-[#232838] py-2.5 last:border-b-0"><div className="w-[90px] shrink-0 font-mono text-[11px] text-[#3DDCFF]">{item.time}</div><div className="text-[13px]">{item.title}<div className="text-[11px] text-[#8B92A5]">{item.desc}</div></div></div>)}</section><section className="rounded-2xl border border-[#232838] bg-[#12151C] p-5"><h2 className="mb-3 text-[15px] font-semibold">Non-negotiables</h2>{['40–60 questions is the working daily range; 50 is the aim.','6–7 hours self-study separate from coaching.','Touch Physics, Chemistry and Maths every day.','Clear Level 1 teacher-selected external-book questions before moving up.','Chemistry gets slightly more weight.','Analyse wrong + unattempted GT questions and reattempt them.'].map((x)=><div key={x} className="flex gap-2 border-b border-[#232838] py-2.5 text-[12.5px] last:border-b-0"><span className="text-[#3DDCFF]">•</span><span>{x}</span></div>)}</section></div>;
+}
+
+function ProgressView({ totalQ, avgQ, streak, totalHrs, last21, progressDays }: any) {
+  const maxQ = Math.max(60, ...last21.map((d: any) => d.data ? d.data.q.phy + d.data.q.chem + d.data.q.math : 0));
+  return <div className="space-y-4"><div className="grid grid-cols-2 gap-3 md:grid-cols-4"><StatBox value={totalQ} label="Total Qs solved"/><StatBox value={avgQ} label="Avg Qs / day"/><StatBox value={streak} label="Day streak (40+ Qs)"/><StatBox value={totalHrs.toFixed(1)} label="Total self-study hrs"/></div><section className="rounded-2xl border border-[#232838] bg-[#12151C] p-5"><h2 className="mb-1 text-[15px] font-semibold">Questions solved — last 21 days</h2><p className="mb-5 text-[11px] text-[#565D70]">Green band = 40–60 target range.</p><div className="flex h-52 items-end gap-1 overflow-x-auto">{last21.map((d: any)=><div key={d.iso} className="flex h-full min-w-[22px] flex-col items-center justify-end gap-1"><div className="text-[8px] text-[#565D70]">{d.data ? d.data.q.phy+d.data.q.chem+d.data.q.math : ''}</div><div className="w-full rounded-t-sm bg-[#3DDCFF]" style={{height:`${Math.max(2, ((d.data ? d.data.q.phy+d.data.q.chem+d.data.q.math : 0)/maxQ)*100)}%`, opacity:d.data?1:0.12}}/><div className="text-[8px] text-[#565D70]">{new Date(`${d.iso}T12:00:00`).getDate()}</div></div>)}</div></section><section className="rounded-2xl border border-[#232838] bg-[#12151C] p-5"><h2 className="mb-3 text-[15px] font-semibold">Subject touch heatmap — last 28 days</h2><div className="space-y-3">{(['phy','chem','math'] as Subject[]).map((s)=><div key={s} className="flex items-center gap-3"><div className="w-14 text-[11px] font-bold" style={{color:SUBJECT_META[s].color}}>{SUBJECT_META[s].label}</div><div className="flex flex-wrap gap-1">{progressDays.map((d:any)=><div key={d.iso} className="h-3.5 w-3.5 rounded-[3px] border border-[#232838]" style={{background:d.data?.touched?.[s]?SUBJECT_META[s].color:'#171B24'}} title={d.iso}/>)}</div></div>)}</div></section><section className="rounded-2xl border border-[#232838] bg-[#12151C] p-5"><h2 className="mb-3 text-[15px] font-semibold">Recent notes log</h2>{progressDays.filter((d:any)=>d.data?.notes?.trim()).slice().reverse().slice(0,10).map((d:any)=><div key={d.iso} className="mb-3"><div className="font-mono text-[10px] text-[#565D70]">{d.iso}</div><div className="mt-1 rounded-lg border border-[#232838] bg-[#171B24] px-3 py-2 text-[12px] text-[#8B92A5]">{d.data.notes}</div></div>)}{progressDays.every((d:any)=>!d.data?.notes?.trim()) && <div className="text-[12px] text-[#565D70]">No notes logged yet.</div>}</section></div>;
+}
+
+function SyllabusView({ syllabus, onToggle, viewer }: { syllabus: Record<string, Status>; onToggle: (key: string) => void; viewer: boolean }) {
+  const all = Object.values(SYLLABUS).flatMap((s) => s.topics);
+  const done = all.filter((t) => t.status === "done").length;
+  const actualDone = all.filter((t) => (syllabus[`${t.name}`] ?? t.status) === "done").length;
+  const pct = Math.round((actualDone / all.length) * 100);
+  return <div className="space-y-4"><section className="rounded-2xl border border-[#232838] bg-[#12151C] p-5"><div className="flex items-end justify-between"><div><h2 className="text-[15px] font-semibold">Overall syllabus completion</h2><p className="text-[11px] text-[#565D70]">Started baseline: {done}/{all.length} topics already marked done.</p></div><div className="font-mono text-lg font-bold text-[#3DDCFF]">{pct}%</div></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-[#171B24]"><div className="h-full rounded-full bg-[#3DDCFF]" style={{width:`${pct}%`}}/></div></section>{(Object.keys(SYLLABUS) as Subject[]).map((s)=><section key={s} className="rounded-2xl border border-[#232838] bg-[#12151C] p-5"><h3 className="mb-3 text-[15px] font-semibold" style={{color:SUBJECT_META[s].color}}>{SUBJECT_META[s].label}<span className="ml-2 font-normal text-[#565D70]">• {SUBJECT_META[s].book}</span></h3>{SYLLABUS[s].topics.map((t)=><div key={t.name} className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-[#232838] bg-[#171B24] px-3 py-3"><div><div className="text-[13px] font-medium">{t.name}</div><div className="mt-1 text-[10px] text-[#565D70]">{t.note}</div></div><button disabled={viewer} onClick={()=>onToggle(t.name)} className={`rounded-full px-3 py-1.5 text-[10px] font-bold uppercase ${statusClass(syllabus[t.name] ?? t.status)} disabled:opacity-70`}>{syllabus[t.name] ?? t.status}</button></div>)}</section>)}</div>;
+}
+
+function shiftIso(iso: string, amount: number) { const d = new Date(`${iso}T12:00:00`); d.setDate(d.getDate()+amount); return d.toISOString().slice(0,10); }
+function Metric({value,label,good}:{value:string|number;label:string;good:boolean}){return <div className={`rounded-xl border border-[#232838] bg-[#171B24] p-3 text-center ${good?'text-[#4ADE80]':''}`}><div className="font-mono text-2xl font-bold">{value}</div><div className="text-[10px] uppercase tracking-wider text-[#565D70]">{label}</div></div>}
+function StatBox({value,label}:{value:string|number;label:string}){return <div className="rounded-[14px] border border-[#232838] bg-[#12151C] p-4 text-center"><div className="font-mono text-2xl font-bold">{value}</div><div className="mt-1 text-[10px] uppercase tracking-wider text-[#565D70]">{label}</div></div>}
+function statusClass(status: Status){ if(status==='done') return 'bg-[#4ADE80]/15 text-[#4ADE80]'; if(status==='progress') return 'bg-[#FFB454]/15 text-[#FFB454]'; return 'bg-[#8B92A5]/10 text-[#565D70]'; }
