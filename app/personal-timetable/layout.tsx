@@ -1,6 +1,17 @@
 import type { ReactNode } from "react";
 import TimeFormat from "./TimeFormat";
+import AccessGate from "./AccessGate";
+import { getPersonalAccess } from "@/lib/personal-access";
 
-export default function PersonalTimetableLayout({ children }: { children: ReactNode }) {
-  return <>{children}<TimeFormat /></>;
+export default async function PersonalTimetableLayout({ children }: { children: ReactNode }) {
+  const access = await getPersonalAccess();
+  return (
+    <>
+      <AccessGate />
+      {access.allowed ? (
+        <div className={access.owner ? "" : "pointer-events-none select-none"}>{children}</div>
+      ) : null}
+      <TimeFormat />
+    </>
+  );
 }
