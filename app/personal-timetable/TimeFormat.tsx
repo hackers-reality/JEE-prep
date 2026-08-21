@@ -11,7 +11,7 @@ function formatOneHour(hour: number, minute: string) {
 function formatTimeRange(text: string) {
   return text.replace(/\b(0?\d|1\d|2[0-3]):([0-5]\d)\s*[–-]\s*(0?\d|1\d|2[0-3]):([0-5]\d)\b/g, (_match, h1, m1, h2, m2) =>
     `${formatOneHour(Number(h1), m1)}–${formatOneHour(Number(h2), m2)}`,
-  ).replace(/\b(0?\d|1\d|2[0-3]):([0-5]\d)\b/g, (_match, h, m) => formatOneHour(Number(h), m));
+  ).replace(/\b(0?\d|1\d|2[0-3]):([0-5]\d)\b(?!\s*(?:AM|PM)\b)/gi, (_match, h, m) => formatOneHour(Number(h), m));
 }
 
 function normalizeTextNodes(root: Node) {
