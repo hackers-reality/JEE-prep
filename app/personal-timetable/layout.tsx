@@ -8,9 +8,7 @@ export default async function PersonalTimetableLayout({ children }: { children: 
   return (
     <>
       <AccessGate />
-      {access.allowed ? (
-        <div className={access.owner ? "" : "pointer-events-none select-none"}>{children}</div>
-      ) : null}
+      {access.allowed ? <div className="select-none">{children}</div> : null}
       <TimeFormat />
     </>
   );
